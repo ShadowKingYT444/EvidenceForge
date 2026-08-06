@@ -1,0 +1,42 @@
+flowchart TB
+    subgraph P1["Phase 1 — Scope contract"]
+        direction LR
+        U1["Human input<br/>question, application, constraints"]
+        N1["Primary model — provisional Groq GPT-OSS-120B<br/>clarify and decompose<br/>prompt: claims-v1"]
+        H1{"Human scope checkpoint<br/>approve, edit, add, remove"}
+        U1 --> N1 --> H1
+        H1 -- "revise" --> N1
+    end
+
+    subgraph P2["Phase 2 — Frozen packet and evidence audit"]
+        direction LR
+        S1["Controlled source packet<br/>DOIs plus user-approved excerpts"]
+        H2{"Human packet checkpoint<br/>review rights, approve, freeze hash"}
+        D1["Deterministic code<br/>DOI syntax, resolution, Registration Agency<br/>Crossref/OpenAlex metadata and rights"]
+        N2["Primary model<br/>extract evidence cards<br/>prompt: evidence-v1"]
+        N3["Primary model<br/>assess entailment and overclaiming<br/>prompt: entailment-v1"]
+        N4["Primary model<br/>synthesize claims and rank gaps<br/>prompt: synthesis-v1"]
+        S1 --> H2 --> D1 --> N2 --> N3 --> N4
+        H2 -- "revise packet" --> S1
+    end
+
+    subgraph P3["Phase 3 — Experiment, critique, and governed revision"]
+        direction LR
+        N5["Primary model<br/>design falsifiable experiment or abstain<br/>prompt: experiment-v1"]
+        N6["Reviewer — provisional NVIDIA Nemotron 3 Super<br/>typed adversarial objections<br/>prompt: review-v1"]
+        H3{"Human objection dispositions<br/>accept, reject, leave unresolved"}
+        N7["Primary model<br/>revise accepted objections only<br/>prompt: revision-v1"]
+        H4{"Human final checkpoint<br/>approve or reject package"}
+        O1["Research package<br/>claim ledger, evidence matrix,<br/>experiment diff, provenance, audit trail"]
+        N5 --> N6 --> H3 --> N7 --> H4
+        H3 -- "reconsider" --> N6
+        H4 -- "approved" --> O1
+    end
+
+    A1["Append-only audit recorder — every attempt<br/>requested/returned model, prompt/schema/source hashes,<br/>validation, latency, usage, refusal, retry, evidence mode"]
+
+    H1 -- "approved scope" --> S1
+    N4 --> N5
+    P1 -. "audit events" .-> A1
+    P2 -. "audit events" .-> A1
+    P3 -. "audit events" .-> A1

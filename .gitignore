@@ -1,0 +1,27 @@
+# Credentials
+.env
+.env.*
+!.env.example
+
+# JavaScript
+node_modules/
+.next/
+out/
+coverage/
+playwright-report/
+test-results/
+*.tsbuildinfo
+
+# Generated and private data
+artifacts/raw/
+artifacts/tmp/
+data/private/
+*.pdf
+!artifacts/submission/*.pdf
+!artifacts/submission/**/*.pdf
+
+# Editors and operating systems
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
