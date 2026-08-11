@@ -1,42 +1,67 @@
+%%{init: {"theme":"base","themeVariables":{"fontFamily":"Arial, sans-serif","fontSize":"18px","lineColor":"#475569","textColor":"#172033","primaryTextColor":"#172033","clusterBkg":"#F8FAFC","clusterBorder":"#94A3B8","edgeLabelBackground":"#FFFFFF"},"flowchart":{"htmlLabels":true,"curve":"linear","nodeSpacing":24,"rankSpacing":34,"padding":12}}}%%
 flowchart TB
-    subgraph P1["Phase 1 — Scope contract"]
+    subgraph P1["01 — Bounded scope contract"]
         direction LR
-        U1["Human input<br/>question, application, constraints"]
-        N1["Primary model — provisional Groq GPT-OSS-120B<br/>clarify and decompose<br/>prompt: claims-v1"]
-        H1{"Human scope checkpoint<br/>approve, edit, add, remove"}
-        U1 --> N1 --> H1
-        H1 -- "revise" --> N1
+        U1["HUMAN INPUT<br/>Question · intended application<br/>constraints · unanswered clarifications"]
+        N1["PRIMARY · Featherless<br/>mistralai/Mistral-Large-Instruct-2411<br/><b>node:</b> clarify-and-decompose<br/><b>prompt:</b> clarify-decompose@1.0.0<br/>Action: propose testable claim contract"]
+        H1{"HUMAN CHECKPOINT<br/>Scope contract<br/>approve · edit · add · remove"}
+        X1["APPROVED SCOPE<br/>Only approved claims continue<br/>to the controlled packet"]
+        U1 --> N1 --> H1 -->|approve| X1
+        H1 -->|revise| N1
     end
 
-    subgraph P2["Phase 2 — Frozen packet and evidence audit"]
+    subgraph P2["02 — Frozen packet and evidence audit"]
         direction LR
-        S1["Controlled source packet<br/>DOIs plus user-approved excerpts"]
-        H2{"Human packet checkpoint<br/>review rights, approve, freeze hash"}
-        D1["Deterministic code<br/>DOI syntax, resolution, Registration Agency<br/>Crossref/OpenAlex metadata and rights"]
-        N2["Primary model<br/>extract evidence cards<br/>prompt: evidence-v1"]
-        N3["Primary model<br/>assess entailment and overclaiming<br/>prompt: entailment-v1"]
-        N4["Primary model<br/>synthesize claims and rank gaps<br/>prompt: synthesis-v1"]
-        S1 --> H2 --> D1 --> N2 --> N3 --> N4
-        H2 -- "revise packet" --> S1
+        S1["CONTROLLED PACKET INPUT<br/><b>node:</b> collect-sources<br/><b>prompt boundary:</b><br/>collect-bounded-source-packet@1.0.0<br/>DOIs + user-approved excerpts only"]
+        H2{"HUMAN CHECKPOINT<br/>Packet rights + contents<br/>review · approve · freeze hash"}
+        D1["DETERMINISTIC CODE<br/>DOI syntax/resolution · metadata diffs<br/>rights · literal quote validation<br/>Existence ≠ entailment"]
+        N2["PRIMARY · Mistral<br/><b>node:</b> extract-evidence<br/><b>prompt:</b> extract-grounded-evidence@2.0.0<br/>Action: extract grounded candidates"]
+        N3["PRIMARY · Mistral<br/><b>node:</b> assess-entailment<br/><b>prompt:</b> assess-evidence-entailment@2.0.0<br/>Action: assess entailment + overclaiming"]
+        N4["PRIMARY · Mistral<br/><b>node:</b> synthesize-conclusions<br/><b>prompt:</b> synthesize-conclusions-gaps@2.0.0<br/>Action: categorical conclusions + ranked gaps"]
+        S1 --> H2 -->|approve + freeze| D1 --> N2 --> N3 --> N4
+        H2 -->|revise packet| S1
     end
 
-    subgraph P3["Phase 3 — Experiment, critique, and governed revision"]
+    subgraph P3["03 — Experiment, heterogeneous critique, governed revision"]
         direction LR
-        N5["Primary model<br/>design falsifiable experiment or abstain<br/>prompt: experiment-v1"]
-        N6["Reviewer — provisional NVIDIA Nemotron 3 Super<br/>typed adversarial objections<br/>prompt: review-v1"]
-        H3{"Human objection dispositions<br/>accept, reject, leave unresolved"}
-        N7["Primary model<br/>revise accepted objections only<br/>prompt: revision-v1"]
-        H4{"Human final checkpoint<br/>approve or reject package"}
-        O1["Research package<br/>claim ledger, evidence matrix,<br/>experiment diff, provenance, audit trail"]
+        N5["PRIMARY · Featherless<br/>mistralai/Mistral-Large-Instruct-2411<br/><b>node:</b> plan-experiment<br/><b>prompt:</b> design-reviewable-experiment@2.0.0<br/>Action: reviewable protocol or typed abstention"]
+        N6["REVIEWER · Featherless<br/>Qwen/Qwen2.5-72B-Instruct<br/><b>node:</b> review-experiment<br/><b>prompt:</b> adversarial-experiment-review@1.0.0<br/>Action: typed objections; no silent revision"]
+        H3{"HUMAN CHECKPOINT<br/>Objection dispositions<br/>accept · reject · unresolved"}
+        N7["PRIMARY · Mistral<br/><b>node:</b> revise-experiment<br/><b>prompt:</b> selective-experiment-revision@1.0.0<br/>Action: apply accepted objections only"]
+        H4{"HUMAN FINAL CHECKPOINT<br/>Review protocol or typed abstention<br/>+ objections/diff when present<br/>approve · reject"}
+        O1["RESEARCH PACKAGE<br/>Claim ledger · evidence matrix<br/>protocol diff · provenance · audit trail<br/>Proposal only; qualified review required"]
+        R1["REJECTED PACKAGE<br/>Unresolved risk and every attempt<br/>remain in the audit trail"]
         N5 --> N6 --> H3 --> N7 --> H4
-        H3 -- "reconsider" --> N6
-        H4 -- "approved" --> O1
+        N5 -->|typed abstention<br/>skip review + revision| H4
+        H3 -->|reconsider| N6
+        H4 -->|approve| O1
+        H4 -->|reject| R1
     end
 
-    A1["Append-only audit recorder — every attempt<br/>requested/returned model, prompt/schema/source hashes,<br/>validation, latency, usage, refusal, retry, evidence mode"]
+    P1 -->|approved scope| P2
+    P2 -->|selected evidence-backed gap| P3
 
-    H1 -- "approved scope" --> S1
-    N4 --> N5
-    P1 -. "audit events" .-> A1
-    P2 -. "audit events" .-> A1
-    P3 -. "audit events" .-> A1
+    subgraph B["Evidence boundary — what the demo may claim"]
+        direction LR
+        F["FIXTURE DEMO PATH<br/>Deterministic, complete workflow playback<br/>Every fixture state is labeled <b>fixture</b>"]
+        L["PRESERVED BOUNDED LIVE ATTEMPT<br/>Live extraction + entailment succeeded;<br/>synthesis required one repair;<br/>experiment planning failed schema validation twice.<br/><b>No live end-to-end success.</b>"]
+        M["BENCHMARK BOUNDARY<br/>No completed measured benchmark.<br/>No quality, cost, latency, or win-rate claim<br/>is inferred from fixture or partial live evidence."]
+        A1["APPEND-ONLY AUDIT<br/>Every attempt records requested/returned model,<br/>prompt/schema/source/code hashes, validation,<br/>timing, exact usage, refusal, retry, and evidence mode."]
+        F --- L --- M --- A1
+    end
+
+    classDef human fill:#FFF7D6,stroke:#A16207,stroke-width:2px,color:#422006;
+    classDef primary fill:#EEF2FF,stroke:#4F46E5,stroke-width:2px,color:#1E1B4B;
+    classDef reviewer fill:#F5F3FF,stroke:#7C3AED,stroke-width:2px,color:#2E1065;
+    classDef deterministic fill:#ECFEFF,stroke:#0891B2,stroke-width:2px,color:#164E63;
+    classDef output fill:#ECFDF5,stroke:#059669,stroke-width:2px,color:#064E3B;
+    classDef failure fill:#FFF1F2,stroke:#E11D48,stroke-width:2px,color:#881337;
+    classDef boundary fill:#F8FAFC,stroke:#64748B,stroke-width:2px,color:#1E293B;
+
+    class U1,H1,H2,H3,H4 human;
+    class N1,N2,N3,N4,N5,N7 primary;
+    class N6 reviewer;
+    class S1,D1,A1 deterministic;
+    class X1,O1,F output;
+    class R1,L failure;
+    class M boundary;

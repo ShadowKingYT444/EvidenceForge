@@ -1,0 +1,268 @@
+.panel {
+  display: grid;
+  grid-template-columns: minmax(13rem, 0.75fr) minmax(17rem, 1fr) minmax(21rem, 1.25fr);
+  gap: 0.85rem 1rem;
+  align-items: start;
+  width: 100%;
+}
+
+.heading,
+.heading > div,
+.risks,
+.start,
+.form,
+.receipt,
+.disclosure,
+.status,
+.field,
+.field span,
+.form fieldset,
+.form fieldset label,
+.form fieldset label span,
+.receipt > div {
+  display: grid;
+  gap: 0.35rem;
+}
+
+.heading {
+  gap: 0.55rem;
+}
+
+.index,
+.mode,
+.risks > strong,
+.field > span,
+.receipt span,
+.revision {
+  color: var(--quiet);
+  font-size: 0.65rem;
+  font-weight: 800;
+  letter-spacing: 0.075em;
+  text-transform: uppercase;
+}
+
+.heading h2 {
+  margin: 0;
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 1.05rem;
+}
+
+.mode {
+  width: fit-content;
+  padding: 0.2rem 0.4rem;
+  border: 1px solid var(--line-strong);
+  background: var(--wash);
+  color: var(--muted);
+}
+
+.risks {
+  max-height: 10rem;
+  overflow: auto;
+  padding-right: 0.35rem;
+}
+
+.risks ul {
+  display: grid;
+  gap: 0.45rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.risks li {
+  padding-left: 0.55rem;
+  border-left: 0.22rem solid var(--warning-line);
+}
+
+.risks span,
+.risks small {
+  font-weight: 700;
+}
+
+.risks p,
+.risks small,
+.start p,
+.disclosure span,
+.status p,
+.rationale p {
+  margin: 0;
+  font-size: 0.7rem;
+  line-height: 1.4;
+}
+
+.start button,
+.submit,
+.export {
+  width: fit-content;
+  min-height: 2.5rem;
+  padding: 0.55rem 0.8rem;
+  border: 1px solid var(--ink);
+  background: var(--ink);
+  color: white;
+  font: inherit;
+  font-size: 0.74rem;
+  font-weight: 800;
+  text-decoration: none;
+}
+
+.start button:disabled,
+.submit:disabled {
+  cursor: wait;
+  opacity: 0.65;
+}
+
+.form {
+  grid-template-columns: minmax(10rem, 0.8fr) minmax(10rem, 0.65fr) minmax(12rem, 1fr) auto;
+  align-items: end;
+}
+
+.form fieldset {
+  grid-template-columns: 1fr 1fr;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.form legend {
+  margin-bottom: 0.35rem;
+  font-size: 0.68rem;
+  font-weight: 800;
+}
+
+.form fieldset label {
+  grid-template-columns: auto 1fr;
+  gap: 0.35rem;
+  align-items: start;
+  padding: 0.35rem;
+  border: 1px solid var(--line);
+  background: var(--wash);
+}
+
+.form fieldset input {
+  margin-top: 0.2rem;
+}
+
+.form fieldset small,
+.field small {
+  color: var(--muted);
+  font-size: 0.64rem;
+  line-height: 1.3;
+}
+
+.field input,
+.field textarea {
+  width: 100%;
+  min-width: 0;
+  padding: 0.45rem 0.5rem;
+  border: 1px solid var(--line-strong);
+  background: white;
+  color: var(--ink);
+  font: inherit;
+  font-size: 0.74rem;
+}
+
+.field textarea {
+  resize: vertical;
+}
+
+.revision {
+  align-self: center;
+  overflow-wrap: anywhere;
+}
+
+.receipt {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.receipt > div {
+  padding-left: 0.5rem;
+  border-left: 0.2rem solid var(--success-line);
+}
+
+.receipt code,
+.receipt time {
+  overflow-wrap: anywhere;
+  font-size: 0.68rem;
+}
+
+.rationale,
+.export {
+  grid-column: 1 / -1;
+}
+
+.disclosure,
+.status {
+  grid-column: 1 / -1;
+}
+
+.disclosure {
+  grid-template-columns: 1fr 1fr;
+  padding-top: 0.55rem;
+  border-top: 1px solid var(--line);
+  color: var(--muted);
+}
+
+.status {
+  padding: 0.5rem 0.65rem;
+  border: 1px solid var(--line-strong);
+  background: var(--wash);
+}
+
+.status[data-tone="success"] {
+  border-left: 0.3rem solid var(--success);
+  background: var(--success-bg);
+}
+
+.status[data-tone="error"] {
+  border-left: 0.3rem solid var(--danger);
+  background: var(--danger-bg);
+}
+
+.status[data-tone="warning"] {
+  border-left: 0.3rem solid var(--warning-line);
+}
+
+.start button:focus-visible,
+.submit:focus-visible,
+.export:focus-visible,
+.field input:focus-visible,
+.field textarea:focus-visible,
+.form fieldset input:focus-visible {
+  outline: 0.18rem solid var(--focus);
+  outline-offset: 0.15rem;
+}
+
+@media (max-width: 78rem) {
+  .panel {
+    grid-template-columns: minmax(13rem, 0.7fr) minmax(18rem, 1fr);
+  }
+
+  .form,
+  .receipt,
+  .disclosure,
+  .status {
+    grid-column: 1 / -1;
+  }
+}
+
+@media (max-width: 60rem) {
+  .panel,
+  .form,
+  .receipt,
+  .disclosure {
+    grid-template-columns: 1fr;
+  }
+
+  .form,
+  .receipt,
+  .disclosure,
+  .status,
+  .rationale,
+  .export {
+    grid-column: auto;
+  }
+
+  .risks {
+    max-height: none;
+  }
+}

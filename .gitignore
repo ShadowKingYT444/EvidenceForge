@@ -11,6 +11,7 @@ coverage/
 playwright-report/
 test-results/
 *.tsbuildinfo
+next-env.d.ts
 
 # Generated and private data
 artifacts/raw/

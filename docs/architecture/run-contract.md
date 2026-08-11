@@ -7,8 +7,8 @@ This is the conceptual contract that lets implementation lanes work independentl
 1. Every conclusion traces to one or more evidence-card IDs, and every evidence card traces to one immutable source-chunk ID.
 2. A source’s existence, bibliographic metadata, claim entailment, and human review are distinct facts.
 3. A missing source, missing passage, provider failure, invalid model output, or skipped human decision remains explicit. It never becomes an empty success object.
-4. Every LLM output records provider, exact model ID, prompt ID/version, generation settings, timestamps, latency, token/usage data when available, cost estimate when defined, and evidence mode.
-5. Human checkpoints record the options shown, decision, edits, timestamp, and unresolved objections.
+4. Every LLM output records provider, exact model ID, prompt ID/version/hash, generation settings, timestamps, latency, token/usage data when available, cost estimate when defined, and evidence mode.
+5. Human checkpoints record the options shown, decision, edits, timestamp, and unresolved objections. Contract 0.2 final decisions also record a bounded declared actor label and rationale; the actor is unverified because the demo has no authentication.
 6. Categorical evidence strength uses a documented rubric; the contract has no arbitrary confidence percentage.
 7. Every persisted run declares whether each node is `live`, `fixture`, `mocked`, `simulated`, or `unverified`.
 8. Every experiment is a proposal requiring qualified human review, not an instruction that the system can execute.
@@ -56,6 +56,7 @@ type ResearchRun = {
   researchGaps: ResearchGap[];
   selectedGapId?: string;
   experiment?: ExperimentProtocol;
+  experimentAbstention?: ExperimentAbstention;
   review?: ExperimentReview;
   revision?: ExperimentRevision;
   finalDecision?: HumanDecision;
@@ -63,6 +64,24 @@ type ResearchRun = {
   errors: RunError[];
 };
 ```
+
+Executable contract `0.2` is the current pre-v1 writer format. Its final
+decision receipt requires paired `declaredActor` and `rationale` fields while
+the server authors its ID, timestamp, allowed options, and unresolved-objection
+IDs. The actor is declared and unverified, not authenticated. Contract `0.1`
+remains explicitly readable without those provenance fields, and the legacy
+reader still accepts `0.0` records whose `experimentAbstention` and execution
+prompt hashes may be absent. Readers do not silently relabel or migrate either
+prior version: a new human packet freeze is required because schema version
+participates in the packet fingerprint.
+
+The reviewed fixture-workbench bootstrap is the bounded `0.2` writer: it
+refreezes the public packet and creates an isolated awaiting-final session for
+the new receipt. Ordinary create/continue model runs remain explicit `0.1`
+writers because their prompt and evaluation manifests are already frozen to
+the `0.1` model schemas. They are read as `0.1`, never relabeled as `0.2`, and
+must not adopt `0.2` until those prompt/evaluation manifests are separately
+refrozen and independently verified.
 
 ## Intake and claim contract
 
@@ -183,6 +202,12 @@ Each `ResearchGap` contains:
 
 The protocol may abstain or require a pilot, domain statistician, or qualified reviewer when necessary inputs are missing. It never invents a power calculation.
 
+Experiment planning returns a typed discriminated result: either a proposed
+`ExperimentProtocol` or an `ExperimentAbstention` with its safety categories,
+missing inputs, qualified-review requirement, and allowed next step. A typed
+abstention skips model review/revision and proceeds to the final human
+checkpoint; it cannot be mistaken for an approved procedure.
+
 `ExperimentReview` contains structured objections for confounds, circular reasoning, equipment feasibility, metrics, unsupported assumptions, ethics/safety, and inferential overreach. Each objection records severity, target field, evidence/rationale, and reviewer model metadata.
 
 `ExperimentRevision` records, for every objection:
@@ -203,6 +228,7 @@ Every `NodeExecution` contains:
 - evidence mode;
 - input and output object references, not duplicated full run state;
 - provider, exact model, prompt ID/version, and structured-output schema version;
+- the canonical SHA-256 hash of the exact versioned prompt resource;
 - generation settings;
 - start/end time and latency;
 - provider usage and normalized cost estimate when available;
@@ -224,3 +250,7 @@ For a measured baseline/workflow pair, freeze and hash:
 - benchmark code version.
 
 The baseline is one comprehensive call and receives the same resolved scope, source packet, required outputs, and primary model. The workflow may use its heterogeneous reviewer but must report extra calls, cost, latency, and human effort. Human graders receive randomized condition labels.
+
+The source-collection node is a typed non-model boundary until lane 020
+provides a bounded source packet. It must fail closed rather than asking a
+model to discover or invent sources.

@@ -1,0 +1,78 @@
+{
+  "schemaVersion": "1.0.0",
+  "modelId": "Qwen/Qwen2.5-72B-Instruct",
+  "probe": "small",
+  "requestShape": {
+    "fields": [
+      "max_tokens",
+      "messages",
+      "model",
+      "response_format",
+      "stream",
+      "temperature"
+    ],
+    "model": "Qwen/Qwen2.5-72B-Instruct",
+    "messageCount": 2,
+    "messageRoles": [
+      "system",
+      "user"
+    ],
+    "messageContentCharacters": [
+      38,
+      276
+    ],
+    "serializedCharacters": 541,
+    "serializedUtf8Bytes": 541,
+    "temperature": 0,
+    "maxTokens": 256,
+    "stream": false,
+    "responseFormat": {
+      "type": "json_object"
+    }
+  },
+  "result": {
+    "ok": true,
+    "nodeId": "reviewer-probe-small",
+    "attempt": 1,
+    "status": "succeeded",
+    "requestedProvider": "featherless",
+    "returnedProvider": "featherless",
+    "requestedModelId": "Qwen/Qwen2.5-72B-Instruct",
+    "returnedModelId": "Qwen/Qwen2.5-72B-Instruct",
+    "requestIds": {
+      "clientRequestId": "execution-d1f786fb-cea7-4ba3-9e96-bf82117b83ae",
+      "providerRequestId": null,
+      "responseId": "6c0b9a79-d40b-4e92-9400-bd5b543c46f0"
+    },
+    "finishReason": "stop",
+    "refusal": {
+      "refused": false,
+      "reason": null
+    },
+    "clientLatencyMs": 10677.2808,
+    "providerTiming": {
+      "queueMs": null,
+      "promptMs": null,
+      "completionMs": null,
+      "totalMs": null
+    },
+    "usage": {
+      "inputTokens": 77,
+      "outputTokens": 5,
+      "totalTokens": 82,
+      "cachedInputTokens": null,
+      "reasoningTokens": null
+    },
+    "pricing": {
+      "currency": "USD",
+      "inputPerMillionTokens": null,
+      "outputPerMillionTokens": null,
+      "estimatedCost": null,
+      "snapshotDate": null
+    },
+    "validationIssueCount": 0,
+    "errorKinds": [],
+    "jsonParseStatus": "valid",
+    "applicationSchemaStatus": "valid"
+  }
+}

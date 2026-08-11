@@ -1,0 +1,23 @@
+{
+  "schemaVersion": "1.1.0",
+  "optionalCount": 2,
+  "targetUnderSeconds": 300,
+  "status": "optional_unverified",
+  "instructions": "Optional presentation evidence only. If a human presenter chooses to time the complete script, record the observed wall-clock duration from first word through final close without rounding down. Do not infer timing from the authored 4:50 target; null records remain unverified and do not block software publication.",
+  "rehearsals": [
+    {
+      "sequence": 1,
+      "evidenceMode": "unverified",
+      "durationSeconds": null,
+      "recordedAt": null,
+      "recordedBy": null
+    },
+    {
+      "sequence": 2,
+      "evidenceMode": "unverified",
+      "durationSeconds": null,
+      "recordedAt": null,
+      "recordedBy": null
+    }
+  ]
+}

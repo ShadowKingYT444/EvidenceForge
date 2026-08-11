@@ -1,0 +1,33 @@
+{
+  "schemaVersion": "1.0.0",
+  "source": "docs/architecture/workflow.mmd",
+  "sourceSha256": "9d8ec3ddb64eeb59f7d20902e732f7bd34d5107313ee4f42265f505a9a9875cf",
+  "sourceHashNormalization": "UTF-8 with CRLF normalized to LF",
+  "renderer": "@mermaid-js/mermaid-cli@11.16.0",
+  "command": "node scripts/export-workflow.mjs",
+  "rendererCommand": "node <resolved-pnpm-script> dlx @mermaid-js/mermaid-cli@11.16.0 -i docs/architecture/workflow.mmd -o artifacts/submission/workflow-v1.png -w 2400 -H 1350 -s 1 -b white -p <generated-local-browser-config>",
+  "processLaunch": "real executable plus argv; shell disabled",
+  "browser": {
+    "executable": "chrome.exe",
+    "selection": "MERMAID_CHROME_PATH override or bounded system Chrome/Edge lookup"
+  },
+  "output": "artifacts/submission/workflow-v1.png",
+  "pngSha256": "3440e08d00f403a323e2fd26a8e37e8cab8755d04cecbc2a54a3d37c236a3a5c",
+  "dimensions": {
+    "width": 2384,
+    "height": 1130
+  },
+  "background": "white",
+  "visualInspection": {
+    "status": "passed",
+    "inspectedAt": "2026-08-11",
+    "submissionResolution": "2400px export",
+    "laptopViewport": "1600x900 fit-to-window",
+    "notes": "Labels, arrow routing, evidence boundaries, and the typed-abstention shortcut are readable at the native export and at a proportional 1600px laptop fit."
+  },
+  "evidenceBoundary": {
+    "fixtureDemo": "explicitly labeled fixture",
+    "liveEndToEndSuccess": false,
+    "measuredBenchmarkComplete": false
+  }
+}

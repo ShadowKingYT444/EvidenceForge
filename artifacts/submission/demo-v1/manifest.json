@@ -1,0 +1,140 @@
+{
+  "schemaVersion": "1.0.0",
+  "title": "EvidenceForge deterministic fixture demo",
+  "acceptedBaseSha": "a1ba19c32edce9184aaa731473a89563ffca4994",
+  "evidenceMode": "fixture",
+  "persistentLabel": "FIXTURE PLAYBACK — NOT LIVE OR MEASURED",
+  "viewport": {
+    "width": 1440,
+    "height": 900
+  },
+  "buildCommand": "pnpm build",
+  "captureCommand": "pnpm exec playwright test --config evals/demo/playwright.config.ts --project=chromium --workers=1",
+  "targetDurationSeconds": 290,
+  "narrationTimeline": [
+    {
+      "frameId": "01-intake-loaded",
+      "startSecond": 0,
+      "endSecond": 30
+    },
+    {
+      "frameId": "02-scope-approved",
+      "startSecond": 30,
+      "endSecond": 55
+    },
+    {
+      "frameId": "03-passage-trace",
+      "startSecond": 55,
+      "endSecond": 105
+    },
+    {
+      "frameId": "04-conclusion-gap",
+      "startSecond": 105,
+      "endSecond": 145
+    },
+    {
+      "frameId": "05-experiment-limits",
+      "startSecond": 145,
+      "endSecond": 195
+    },
+    {
+      "frameId": "06-objections-audit",
+      "startSecond": 195,
+      "endSecond": 245
+    },
+    {
+      "frameId": "07-final-export",
+      "startSecond": 245,
+      "endSecond": 290
+    }
+  ],
+  "screenshots": [
+    {
+      "id": "01-intake-loaded",
+      "file": "01-intake-loaded.png",
+      "route": "/intake",
+      "focus": "Loaded bounded question and three-claim contract",
+      "width": 1440,
+      "height": 900,
+      "sha256": "367455d5fad65b4b07c654c70d296096169816051edad54de3c8d24002e5c4ec"
+    },
+    {
+      "id": "02-scope-approved",
+      "file": "02-scope-approved.png",
+      "route": "/intake",
+      "focus": "Human scope approval before evidence work",
+      "width": 1440,
+      "height": 900,
+      "sha256": "5c75a63ea9f054611f187b6a07552fd294eabec48b89aa2ab1ec11fb4080edb8"
+    },
+    {
+      "id": "03-passage-trace",
+      "file": "03-passage-trace.png",
+      "route": "/workbench?evidence=gf-evidence-02#evidence-verification-drawer",
+      "focus": "Exact unloaded 77-hour passage with three separate review layers",
+      "width": 1440,
+      "height": 900,
+      "sha256": "9f85caa37a95caad80cf6ee8dc3e56058096ea932713ce81073d16f6ecd3976d"
+    },
+    {
+      "id": "04-conclusion-gap",
+      "file": "04-conclusion-gap.png",
+      "route": "/workbench#synthesis-gap",
+      "focus": "Conflicting duration conclusion, insufficient integration, selected gap",
+      "width": 1440,
+      "height": 900,
+      "sha256": "1c5bd670e68ece32b03334050bf4dd1cab998ba1c4a422d7b0803ff9eccb5ae1"
+    },
+    {
+      "id": "05-experiment-limits",
+      "file": "05-experiment-limits.png",
+      "route": "/workbench#experiment",
+      "focus": "Bounded educational pilot and explicit does-not-establish limits",
+      "width": 1440,
+      "height": 900,
+      "sha256": "e6d2b86c137e80348537969afac9baa63ee83c9a3a5eca1fb1b47a2fb2975678"
+    },
+    {
+      "id": "06-objections-audit",
+      "file": "06-objections-audit.png",
+      "route": "/workbench#review-revision",
+      "focus": "Accepted load-verification objection and unresolved degradation risk",
+      "width": 1440,
+      "height": 900,
+      "sha256": "fe750855ac77e4998c753f008d0f3003c99afa4131f2675efb67dca0f9194525"
+    },
+    {
+      "id": "07-final-export",
+      "file": "07-final-export.png",
+      "route": "/workbench?runId={process-local-fixture-session}#final-decision",
+      "focus": "Isolated final human decision and canonical JSON export receipt",
+      "width": 1440,
+      "height": 900,
+      "sha256": "10af46720580fc74a8dc8bea145cf43e397a7f92dead1b8cd81e269f9ba7632a"
+    }
+  ],
+  "canonicalExport": {
+    "file": "canonical-approved-run.json",
+    "sha256": "8d105bef2b72178473a82d4cd64eb15755f8e44687ff8e2b0361ce7739536c8b",
+    "evidenceMode": "fixture",
+    "schemaVersion": "0.2",
+    "status": "approved",
+    "declaredActor": "Demo reviewer",
+    "route": "/workbench?runId={process-local-fixture-session}#final-decision",
+    "capturedRoute": "/workbench?runId=fixture-workbench-653858db-b28c-4902-a21a-9a7d8da63da1#final-decision",
+    "byteStability": "Stable for this accepted process-local session; a new session receives new server-authored IDs and time."
+  },
+  "captureNormalizations": [
+    "Persistent fixture/non-live/non-measured banner added by the Lane-040 capture seam.",
+    "Frames 04-07 use capture-only focus layouts cloned from the rendered accepted fixture DOM; no record content is changed and the product UI is not modified.",
+    "Ephemeral process-local run, receipt, and decision-time text replaced only in frame 07 with explicit placeholders; canonical export bytes remain unmodified."
+  ],
+  "truthBoundary": {
+    "completeDemoPath": "fixture",
+    "finalBoundedLiveAttempt": "failed at experiment planning after extraction and entailment succeeded and synthesis repaired once",
+    "measuredBenchmarkComplete": false,
+    "ablationsComplete": false,
+    "measuredCostClaim": false,
+    "superiorityClaim": false
+  }
+}

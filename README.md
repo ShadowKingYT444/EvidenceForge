@@ -1,6 +1,6 @@
 # EvidenceForge
 
-EvidenceForge is an independent ReverieHacks 2026 ML Prompt Engineering entry: an auditable claim-to-experiment workflow for bounded, user-approved source packets. It is not affiliated with Cisco Talos or any other project using the same name, and no trademark or exclusivity claim is made.
+EvidenceForge is an independent ReverieHacks 2026 Software Development entry: a Next.js/React/TypeScript application whose core moat is a human-governed, auditable LLM claim-to-experiment workflow for bounded, user-approved source packets. It is not affiliated with Cisco Talos or any other project using the same name, and no trademark or exclusivity claim is made.
 
 The project turns a scientific question and a frozen, user-approved source packet into:
 
@@ -15,7 +15,7 @@ The winning claim is not “AI searches all of science.” Existing products alr
 
 ## Readiness boundaries
 
-Product implementation begins after the later published start boundary, August 3, 2026. Eligibility, team size, source rights, provider capabilities, and the intentional public baseline are reviewed before implementation. The official ML page still says four submission files while naming only workflow PNG, samples, and documentation; the unknown fourth artifact remains a final release blocker and is never guessed.
+Product implementation begins after the later published start boundary, August 3, 2026. Eligibility, team size, source rights, provider capabilities, and the intentional public baseline are reviewed before implementation. The captured official submission requirements say four files while naming only workflow PNG, samples, and documentation. Resolving the four-versus-three ambiguity is an external Devpost submission task, not a blocker to publishing independently verified software. No fourth artifact is guessed.
 
 ## Workspace map
 

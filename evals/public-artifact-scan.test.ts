@@ -1,0 +1,274 @@
+import { readdirSync, readFileSync } from "node:fs";
+import { relative, resolve } from "node:path";
+
+import { describe, expect, it } from "vitest";
+
+const workspaceRoot = resolve(import.meta.dirname, "..");
+const publicRoots = [
+  resolve(workspaceRoot, "evals"),
+  resolve(workspaceRoot, "docs", "submission"),
+];
+const publicEntryPointFiles = [
+  resolve(workspaceRoot, "README.md"),
+  resolve(workspaceRoot, "docs", "RESEARCH_BASIS.md"),
+];
+
+function filesBelow(directory: string): string[] {
+  return readdirSync(directory, { withFileTypes: true })
+    .flatMap((entry) => {
+      const path = resolve(directory, entry.name);
+      return entry.isDirectory() ? filesBelow(path) : [path];
+    })
+    .sort();
+}
+
+const trackerPrefix = ["E", "V", "F"].join("");
+const privateControlFragments = [
+  ["AGENTS", ".md"].join(""),
+  ["AGENTS", ".override", ".md"].join(""),
+  ["docs", "EXECPLAN.md"].join("/"),
+  ["docs", "internal"].join("/"),
+  ["agent", "workflow"].join("_"),
+  [".worktree", "include"].join(""),
+  ["HANDOFF", ".template.md"].join(""),
+  ["WORKTREE", "_AGENTS.template.md"].join(""),
+  ["C:", "Users"].join("\\"),
+  ["/", "Users", "/"].join(""),
+];
+const internalCodenames = [["Evi", "Forge"].join("")];
+const secretFragments = [
+  ["-----BEGIN ", "PRIVATE KEY-----"].join(""),
+];
+const signatures = [
+  {
+    label: "internal tracker key",
+    pattern: new RegExp(`\\b${trackerPrefix}-\\d+\\b`, "g"),
+  },
+  {
+    label: "personal email",
+    pattern:
+      /\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/gi,
+  },
+  {
+    label: "assigned secret",
+    pattern:
+      /(?:api[_-]?key|secret|token|password)\s*[:=]\s*["'][^"']{8,}["']/gi,
+  },
+  {
+    label: "provider credential",
+    pattern:
+      /\b(?:AKIA[0-9A-Z]{16}|ghp_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|gsk_[A-Za-z0-9_-]{20,}|nvapi-[A-Za-z0-9_-]{20,}|sk-[A-Za-z0-9_-]{20,}|AIza[A-Za-z0-9_-]{20,}|xox[baprs]-[A-Za-z0-9-]{20,})\b/g,
+  },
+];
+
+describe("public evaluation and submission artifacts", () => {
+  it("exclude internal tracking, control-plane, identity, codename, and secret material", () => {
+    const findings: string[] = [];
+    const fragments = [
+      ...privateControlFragments.map((value) => ({
+        label: "control-plane fragment",
+        value,
+      })),
+      ...internalCodenames.map((value) => ({
+        label: "internal codename",
+        value,
+      })),
+      ...secretFragments.map((value) => ({
+        label: "secret material",
+        value,
+      })),
+    ];
+
+    const publicFiles = [
+      ...new Set([...publicRoots.flatMap(filesBelow), ...publicEntryPointFiles]),
+    ];
+
+    for (const file of publicFiles) {
+      const displayPath = relative(workspaceRoot, file).replaceAll("\\", "/");
+      const content = readFileSync(file, "utf8");
+      const searchable = `${displayPath}\n${content}`;
+
+      for (const { label, value } of fragments) {
+        if (searchable.includes(value)) {
+          findings.push(`${displayPath}: ${label}`);
+        }
+      }
+      for (const { label, pattern } of signatures) {
+        pattern.lastIndex = 0;
+        if (pattern.test(searchable)) {
+          findings.push(`${displayPath}: ${label}`);
+        }
+      }
+    }
+
+    expect(findings).toEqual([]);
+  });
+
+  it("states exact documentation provenance and hash boundaries", () => {
+    const nodeReference = readFileSync(
+      resolve(workspaceRoot, "docs", "submission", "workflow-node-reference.md"),
+      "utf8",
+    );
+    const executiveSummary = readFileSync(
+      resolve(workspaceRoot, "docs", "submission", "executive-summary.md"),
+      "utf8",
+    );
+
+    expect(nodeReference).toContain(
+      "Binds current per-node prompt/schema/generation/transport/timeout/retry/capability policies and current reviewer identity; the primary identity is bound elsewhere in the complete configuration.",
+    );
+    expect(nodeReference).toContain(
+      "Binds fixture ID and canonical SHA, packet fingerprint, rights-approval SHA, ordered source/chunk IDs, and source/chunk content hashes—no prompt, model, or node-policy fields.",
+    );
+    expect(nodeReference).not.toContain(
+      "Binds current model identities and live transport/validation policies.",
+    );
+    expect(nodeReference).not.toContain(
+      "Binds fixture, packet, rights, prompt, model, and node authority inputs.",
+    );
+    expect(executiveSummary).toContain(
+      "These documents were derived from the accepted repository state at `59803f1132017e0c3f4ae4ee63317c813bf2fba5`; their containing integration SHA belongs to post-merge evidence and is not asserted here.",
+    );
+    expect(executiveSummary).not.toContain(
+      "The documentation and integrated [workflow image](../../artifacts/submission/workflow-v1.png) are reproducible from accepted repository commit",
+    );
+  });
+
+  it("frames current public entry points as a Software Development application", () => {
+    const readme = readFileSync(resolve(workspaceRoot, "README.md"), "utf8");
+    const researchBasis = readFileSync(
+      resolve(workspaceRoot, "docs", "RESEARCH_BASIS.md"),
+      "utf8",
+    );
+    const executiveSummary = readFileSync(
+      resolve(workspaceRoot, "docs", "submission", "executive-summary.md"),
+      "utf8",
+    );
+    const publicEntryPoints = [readme, researchBasis, executiveSummary].join(
+      "\n",
+    );
+
+    expect(readme).toContain("ReverieHacks 2026 Software Development entry");
+    expect(readme).toContain("Next.js/React/TypeScript application");
+    expect(executiveSummary).toContain(
+      "Next.js/React/TypeScript software application",
+    );
+    expect(publicEntryPoints).toContain(
+      "core moat is a human-governed, auditable LLM claim-to-experiment workflow",
+    );
+    for (const staleFraming of [
+      "ML Prompt Engineering entry",
+      "prompt-engineering demonstration",
+      "official ML page",
+      "The ML track",
+    ]) {
+      expect(publicEntryPoints).not.toContain(staleFraming);
+    }
+
+    expect(readme).toContain(
+      "It is not affiliated with Cisco Talos or any other project using the same name, and no trademark or exclusivity claim is made.",
+    );
+    expect(executiveSummary).toContain(
+      "The complete path shown in the demo is `fixture`.",
+    );
+    expect(executiveSummary).toContain(
+      "both experiment-planning attempts failed application-schema validation",
+    );
+    expect(researchBasis).toContain(
+      "The preserved bounded live attempt was not an end-to-end success: extraction and entailment succeeded, synthesis succeeded after one repair, and both experiment-planning attempts failed application-schema validation.",
+    );
+    expect(executiveSummary).toContain(
+      "The planned measured benchmark, private blind grade, ablation study, and measured monetary-cost study were canceled and not completed; no successful live end-to-end run exists.",
+    );
+  });
+
+  it("keeps publication boundaries optional and public test filenames semantic", () => {
+    const publicTestPaths = [
+      ...filesBelow(resolve(workspaceRoot, "evals")),
+      ...filesBelow(resolve(workspaceRoot, "tests")),
+    ].map((file) => relative(workspaceRoot, file).replaceAll("\\", "/"));
+    expect(
+      publicTestPaths.filter((path) =>
+        /(?:^|\/)(?:evf|issue)[-_]?\d+/i.test(path),
+      ),
+    ).toEqual([]);
+
+    const readme = readFileSync(resolve(workspaceRoot, "README.md"), "utf8");
+    const researchBasis = readFileSync(
+      resolve(workspaceRoot, "docs", "RESEARCH_BASIS.md"),
+      "utf8",
+    );
+    const executiveSummary = readFileSync(
+      resolve(workspaceRoot, "docs", "submission", "executive-summary.md"),
+      "utf8",
+    );
+    const demoScript = readFileSync(
+      resolve(
+        workspaceRoot,
+        "docs",
+        "submission",
+        "fixture-demo-script-v1.md",
+      ),
+      "utf8",
+    );
+    const rehearsalArtifact = readFileSync(
+      resolve(
+        workspaceRoot,
+        "artifacts",
+        "submission",
+        "demo-v1",
+        "rehearsals.json",
+      ),
+      "utf8",
+    );
+    const privateAuditTest = readFileSync(
+      resolve(
+        workspaceRoot,
+        "evals",
+        "cases",
+        "private-scoring-release-v1.test.ts",
+      ),
+      "utf8",
+    );
+    const publicationBoundary = [
+      readme,
+      researchBasis,
+      executiveSummary,
+      demoScript,
+      rehearsalArtifact,
+      privateAuditTest,
+    ].join("\n");
+
+    expect(readme).toContain(
+      "Resolving the four-versus-three ambiguity is an external Devpost submission task, not a blocker to publishing independently verified software.",
+    );
+    expect(researchBasis).toContain(
+      "Resolving the four-versus-three ambiguity is an external Devpost submission task, not a blocker to publishing independently verified software.",
+    );
+    expect(executiveSummary).toContain(
+      "Repository publication requires an independent public allowlist/secret/restricted-content/name review and explicit user authorization.",
+    );
+    expect(executiveSummary).toContain(
+      "The verifier-only private scoring pack is unavailable and supplies no audit pass; it is optional private audit evidence, not a prerequisite for publishing the verified code.",
+    );
+    expect(demoScript).toContain(
+      "Optional human rehearsal evidence: **unverified**.",
+    );
+    expect(privateAuditTest).toContain(
+      'describe.runIf(publicationScanMode === "trusted")(',
+    );
+    expect(privateAuditTest).toContain(
+      'describe("optional trusted private scoring audit availability"',
+    );
+
+    for (const staleBlocker of [
+      "final release blocker",
+      "Publication still requires",
+      "Human rehearsal gate: **blocked**",
+      "blocked_human_timing_required",
+      "private scoring publication gate",
+    ]) {
+      expect(publicationBoundary).not.toContain(staleBlocker);
+    }
+  });
+});

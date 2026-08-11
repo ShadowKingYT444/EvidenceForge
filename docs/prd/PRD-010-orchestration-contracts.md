@@ -80,20 +80,21 @@ The strong baseline prompt is a first-class prompt that receives the same resolv
 
 Expose the smallest common interface for structured generation while retaining provider-specific usage and request IDs. Provider/model IDs are server-only environment configuration and are written into every execution record.
 
-The provisional smoke-tested pairing is Groq `openai/gpt-oss-120b` for primary workflow nodes and NVIDIA NIM `nvidia/nemotron-3-super-120b-a12b` for adversarial review. This is configuration, not a permanent contract. Freeze it only after representative nested-schema, refusal, latency, quota, and quality spikes.
+The selected live candidate uses Featherless with `mistralai/Mistral-Large-Instruct-2411` for primary workflow nodes and `Qwen/Qwen2.5-72B-Instruct` for adversarial review. The reviewer was selected from bounded official-source research and one authenticated representative structured-output probe; that evidence establishes neither live-golden quality nor fixed-plan entitlement. Freeze it only after authenticated current-plan availability and representative refusal, latency, quota, cost, and quality checks in the live gate.
 
 Requirements:
 
 - application-side Zod validation regardless of provider structured-output claims;
-- use Groq strict JSON Schema only for schemas that satisfy its closed-object/required-field subset;
-- use prompted JSON object output plus Zod/invariant validation for the NVIDIA reviewer; hosted strict-schema support is not assumed;
-- disable Nemotron thinking for short structured review calls unless a measured case justifies a logged reasoning budget;
+- use Featherless's documented `response_format: {"type":"json_object"}` plus the prompt-appended schema and application-side Zod/invariant validation for both Featherless model families; hosted strict-schema support is not assumed;
+- send only documented OpenAI-compatible messages, `max_tokens`, JSON-object response format, and ordinary generation settings; do not send retired Groq/NVIDIA reasoning or strict-schema extensions;
 - allow at most one explicit, logged repair attempt after invalid output;
 - explicit timeout, bounded retry, and typed failure;
 - no silent model fallback during evaluation;
 - primary and reviewer family must differ when heterogeneous review is claimed;
 - a fake/fixture adapter for deterministic tests, labeled `fixture` or `mocked`;
 - exact input/output object references suitable for the audit trail without logging secrets.
+
+Monetary pricing is outside the MVP live gate. The current live invocation has no cost-basis input or pricing preflight, and its artifact config records `costBasis: null`. Provider-returned usage remains exact, while per-token rates, pricing snapshot, and estimated monetary cost remain `null`; no missing price may be encoded as zero. Historical artifact readers retain their original numeric pricing representations without making them valid current writes.
 
 The smoke tests prove simple transport and one-field schema behavior only. They do not prove nested-schema reliability, refusal handling, rate limits, cost, domain quality, or a benefit from cross-family review.
 

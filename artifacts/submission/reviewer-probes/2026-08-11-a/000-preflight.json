@@ -1,0 +1,37 @@
+{
+  "schemaVersion": "1.0.0",
+  "evidenceMode": "live",
+  "codeVersion": "836f343f021fe99a07135c3b51666d3c8609e15e",
+  "plan": {
+    "id": "feather_pro_plus",
+    "maxContextLength": 32768
+  },
+  "catalogRowCount": 1000,
+  "candidates": [
+    {
+      "modelId": "Qwen/Qwen2.5-72B-Instruct",
+      "slug": "qwen2.5-72b",
+      "developerFamily": "qwen",
+      "baseFamily": "qwen2.5",
+      "availableOnCurrentPlan": true,
+      "contextLength": 32768,
+      "maxCompletionTokens": null,
+      "heterogeneousFromPrimary": true
+    },
+    {
+      "modelId": "meta-llama/Llama-3.3-70B-Instruct",
+      "slug": "llama-3.3-70b",
+      "developerFamily": "meta",
+      "baseFamily": "llama-3.3",
+      "availableOnCurrentPlan": true,
+      "contextLength": 32768,
+      "maxCompletionTokens": null,
+      "heterogeneousFromPrimary": true
+    }
+  ],
+  "strictZeroIncrementalSpend": true,
+  "candidateOrder": [
+    "Qwen/Qwen2.5-72B-Instruct",
+    "meta-llama/Llama-3.3-70B-Instruct"
+  ]
+}

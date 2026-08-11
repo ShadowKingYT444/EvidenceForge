@@ -1,0 +1,20 @@
+{
+  "schemaVersion": "1.0.0",
+  "evidenceMode": "live",
+  "codeVersion": "836f343f021fe99a07135c3b51666d3c8609e15e",
+  "selectedModelId": "Qwen/Qwen2.5-72B-Instruct",
+  "outcomes": [
+    {
+      "modelId": "Qwen/Qwen2.5-72B-Instruct",
+      "classification": "transport_and_schema_compatible"
+    }
+  ],
+  "strictZeroIncrementalSpend": true,
+  "perTokenPricingStatus": "unavailable",
+  "pricingCorrection": {
+    "mode": "offline_local_metadata_correction",
+    "providerRerun": false,
+    "preservedLiveObservations": true
+  },
+  "noBenchmarkQualityClaim": true
+}
