@@ -2,13 +2,7 @@
 
 **Turn a bounded source packet into an inspectable claim-to-experiment decision record.**
 
-EvidenceForge is an independent ReverieHacks 2026 Software Development entry. It is a Next.js/React/TypeScript application for student researchers who need to see exactly how evidence, model judgment, and human decisions shape a proposed experiment.
 
-It is not affiliated with Cisco Talos or any other project using the same name, and no trademark or exclusivity claim is made.
-
-> **Demo evidence:** `FIXTURE PLAYBACK — NOT LIVE OR MEASURED`. The complete demonstration is deterministic fixture playback; current live evidence is partial and unsuccessful.
-
-![EvidenceForge workflow from bounded question through human-approved canonical export](artifacts/submission/workflow-v1.png)
 
 ## Why EvidenceForge
 
