@@ -31,7 +31,6 @@ The design goal is inspectability and accountable human governance. The reposito
 
 ## Verified capabilities
 
-These capabilities are verified through the committed deterministic fixture, contract tests, and browser journey—not through a successful live end-to-end run:
 
 - blocking human scope and packet-approval gates;
 - immutable packet, source, chunk, and excerpt identities;
@@ -43,13 +42,7 @@ These capabilities are verified through the committed deterministic fixture, con
 - retained invalid responses, transport failures, repairs, and retries;
 - an explicit final human disposition and deterministic canonical export.
 
-![Exact unloaded 77-hour passage with verification, model assessment, and human review shown separately](artifacts/submission/demo-v1/03-passage-trace.png)
 
-![Accepted load-verification objection beside the unresolved degradation risk and preserved audit history](artifacts/submission/demo-v1/06-objections-audit.png)
-
-![Fixture-only final human decision and canonical JSON export receipt](artifacts/submission/demo-v1/07-final-export.png)
-
-The complete seven-frame sequence and hashes are recorded in the [demo manifest](artifacts/submission/demo-v1/manifest.json), with a timed [fixture demo script](docs/submission/fixture-demo-script-v1.md).
 
 ## Architecture and stack
 
