@@ -1,4 +1,4 @@
-import { readdirSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { relative, resolve } from "node:path";
 
 import { describe, expect, it } from "vitest";
@@ -62,6 +62,62 @@ const signatures = [
 ];
 
 describe("public evaluation and submission artifacts", () => {
+  it("presents a complete, link-valid judge-facing README", () => {
+    const readmePath = resolve(workspaceRoot, "README.md");
+    const readme = readFileSync(readmePath, "utf8");
+
+    for (const requiredSection of [
+      "## Why EvidenceForge",
+      "## How the workflow works",
+      "## Verified capabilities",
+      "## Architecture and stack",
+      "## Quick start",
+      "## Verification",
+      "## Evidence boundary and current status",
+      "## Safety, rights, and governance",
+    ]) {
+      expect(readme).toContain(requiredSection);
+    }
+
+    for (const requiredTruth of [
+      "ReverieHacks 2026 Software Development entry",
+      "Exact passage provenance",
+      "deterministic verification, model assessment, and human review",
+      "selective human-approved revision",
+      "FIXTURE PLAYBACK — NOT LIVE OR MEASURED",
+      "failed at experiment planning",
+      "No successful live end-to-end run exists",
+      "benchmark and ablations were canceled and not completed",
+    ]) {
+      expect(readme).toContain(requiredTruth);
+    }
+
+    expect(readme).toContain(
+      "It is not affiliated with Cisco Talos or any other project using the same name, and no trademark or exclusivity claim is made.",
+    );
+    expect(readme).not.toMatch(
+      /!\[[^\]]*(?:build|coverage|license|deploy)[^\]]*\]\([^)]*(?:badge|shields\.io)/i,
+    );
+
+    const relativeTargets = [
+      ...readme.matchAll(/!?\[[^\]]*\]\(([^)]+)\)/g),
+    ]
+      .map((match) => match[1]!.trim())
+      .filter((target) => !/^(?:https?:|mailto:|#)/i.test(target))
+      .map((target) => target.split("#", 1)[0]!);
+
+    expect(relativeTargets.length).toBeGreaterThan(0);
+    for (const target of relativeTargets) {
+      expect(existsSync(resolve(workspaceRoot, target)), target).toBe(true);
+    }
+
+    const imageAltTexts = [...readme.matchAll(/!\[([^\]]*)\]\([^)]+\)/g)].map(
+      (match) => match[1]!.trim(),
+    );
+    expect(imageAltTexts.length).toBeGreaterThanOrEqual(3);
+    expect(imageAltTexts.every((altText) => altText.length >= 12)).toBe(true);
+  });
+
   it("exclude internal tracking, control-plane, identity, codename, and secret material", () => {
     const findings: string[] = [];
     const fragments = [
