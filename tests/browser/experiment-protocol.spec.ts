@@ -6,7 +6,7 @@ test.describe("experiment protocol inspector", () => {
   test("shows the bounded protocol, power warning, safety gate, and inference limits", async ({
     page,
   }) => {
-    await page.goto("/workbench");
+    await page.goto("/workbench#experiment");
 
     const inspector = page.getByRole("region", {
       name: "Experiment protocol inspector",

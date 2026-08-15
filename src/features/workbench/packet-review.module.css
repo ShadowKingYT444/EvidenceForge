@@ -747,3 +747,6 @@
     transition-duration: 0.01ms !important;
   }
 }
+
+.previewDisclosure { border-color: #51545d; background: #1b1c20; color: #f1f1f2; }
+.previewDisclosure span { color: #b8bac1; }

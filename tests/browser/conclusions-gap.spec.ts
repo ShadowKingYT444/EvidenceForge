@@ -15,7 +15,7 @@ test.describe("conclusions and selected-gap inspector", () => {
       failedRequests.push(`${request.method()} ${request.url()}`);
     });
 
-    await page.goto("/workbench");
+    await page.goto("/workbench#findings");
 
     const inspector = page.getByRole("region", {
       name: "Conclusions and selected research gap",
@@ -72,13 +72,14 @@ test.describe("conclusions and selected-gap inspector", () => {
     await expect(evidenceLink).toBeFocused();
     await evidenceLink.click();
     await expect(page).toHaveURL(/evidence=gf-evidence-01/);
-    const drawer = page.getByRole("dialog", { name: /Evidence verification/ });
+    const drawer = page.getByRole("dialog", { name: "Evidence details" });
     await expect(drawer).toBeVisible();
-    await expect(drawer.getByText("gf-evidence-01", { exact: true })).toBeVisible();
+    await drawer.getByRole("tab", { name: "Audit" }).click();
+    await expect(drawer.getByText(/gf-evidence-01/)).toBeVisible();
     await page.waitForLoadState("networkidle");
 
     await page.setViewportSize({ width: 390, height: 844 });
-    await page.goto("/workbench");
+    await page.goto("/workbench#findings");
     await expect(inspector).toBeVisible();
     expect(
       await page.evaluate(

@@ -76,7 +76,7 @@ export function EvidenceMatrix({
   return (
     <section
       className={styles.surface}
-      id="evidence"
+      id="evidence-matrix"
       aria-label="Claim by source evidence matrix"
     >
       <header className={styles.header}>

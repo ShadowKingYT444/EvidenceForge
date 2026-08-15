@@ -125,7 +125,6 @@ async function bootstrapFinalSession(page: Page) {
   await expect(page).toHaveURL(
     new RegExp(`/workbench\\?runId=${bootstrap.runId}$`),
   );
-  await expect(page.getByText(`Run ${bootstrap.runId} · contract 0.2`)).toBeVisible();
   await expect(
     page.getByRole("heading", { name: "Final decision required" }),
   ).toBeVisible();
@@ -224,19 +223,15 @@ test.describe("complete golden fixture journey", () => {
     });
     await continueToWorkbench.focus();
     await page.keyboard.press("Enter");
-    await expect(page).toHaveURL(/\/workbench$/);
+    await expect(page).toHaveURL(/\/workbench#evidence$/);
 
     await expect(
       page.getByLabel("Evidence mode: Fixture. Deterministic reviewed fixture."),
     ).toBeVisible();
-    await expect(
-      page.getByText(
-        "This shell displays the recorded decision; it does not replay or fabricate approval.",
-      ),
-    ).toBeVisible();
-    await expect(page.getByRole("heading", { name: "Claim ledger" })).toBeVisible();
-    await expect(page.getByText("3 claim rows")).toBeVisible();
+    await page.getByRole("link", { name: "01 Scope" }).click();
+    await expect(page.getByRole("heading", { name: "Resolved claim contract" })).toBeVisible();
 
+    await page.getByRole("link", { name: "02 Packet" }).click();
     const packet = page.getByRole("region", { name: "Source packet checkpoint" });
     await expect(packet.getByText("Frozen packet", { exact: true })).toBeVisible();
     await expect(packet.getByText(goldenRunV01.packet!.fingerprint)).toBeVisible();
@@ -246,6 +241,9 @@ test.describe("complete golden fixture journey", () => {
       }),
     ).toBeVisible();
 
+    await page.getByRole("link", { name: "03 Evidence" }).click();
+    await page.getByRole("button", { name: "View" }).click();
+    await page.getByRole("menuitem", { name: "Matrix" }).click();
     const matrix = page.getByRole("region", {
       name: "Claim by source evidence matrix",
     });
@@ -271,6 +269,7 @@ test.describe("complete golden fixture journey", () => {
     await page.keyboard.press("Escape");
     await expect(secondCell).toBeFocused();
 
+    await page.getByRole("link", { name: "04 Findings" }).click();
     const conclusions = page.getByRole("region", {
       name: "Conclusions and selected research gap",
     });
@@ -282,6 +281,7 @@ test.describe("complete golden fixture journey", () => {
       "Gap 01 · selected",
     );
 
+    await page.getByRole("link", { name: "05 Experiment" }).click();
     const protocol = page.getByRole("region", {
       name: "Experiment protocol inspector",
     });
@@ -296,6 +296,7 @@ test.describe("complete golden fixture journey", () => {
       protocol.getByText("What this outcome does not establish", { exact: true }).first(),
     ).toBeVisible();
 
+    await page.getByRole("link", { name: "06 Review" }).click();
     const objections = page.getByRole("region", {
       name: "Objection dispositions and selective revision",
     });
@@ -311,6 +312,7 @@ test.describe("complete golden fixture journey", () => {
     await expect(unresolved.getByText("No field change", { exact: true })).toBeVisible();
     await expect(unresolved.getByText("After", { exact: true })).toHaveCount(0);
 
+    await page.getByRole("link", { name: "07 Audit" }).click();
     const failedPlan = page.locator(
       '[data-audit-attempt][data-node-id="plan-experiment"][data-execution-status="failed"]',
     );
@@ -322,15 +324,16 @@ test.describe("complete golden fixture journey", () => {
     await failedPlan.locator("summary").focus();
     await page.keyboard.press("Enter");
     await expect(failedPlan.getByText("Failed", { exact: true })).toBeVisible();
-    await expect(failedPlan.getByText("Attempt 1 · fixture", { exact: true })).toBeVisible();
+    const auditDialog = page.getByRole("dialog", { name: "Execution attempt details" });
+    await expect(auditDialog.getByText("Evidence mode")).toBeVisible();
+    await page.keyboard.press("Escape");
     await retriedPlan.locator("summary").focus();
     await page.keyboard.press("Enter");
     await expect(retriedPlan.getByText("Succeeded", { exact: true })).toBeVisible();
-    await expect(retriedPlan.getByText("Retry of gf-execution-plan-1")).toBeVisible();
+    await expect(auditDialog.getByText("Retry of gf-execution-plan-1")).toBeVisible();
+    await page.keyboard.press("Escape");
     expect(observed.checkpointPosts).toEqual([]);
 
-    await retriedPlan.locator("summary").press("Enter");
-    await failedPlan.locator("summary").press("Enter");
     await failedPlan.scrollIntoViewIfNeeded();
     await page.screenshot({
       path: testInfo.outputPath("interim-golden-failure-retry-1440.png"),
@@ -347,6 +350,7 @@ test.describe("complete golden fixture journey", () => {
       ),
     ).toBe(true);
     await page.setViewportSize({ width: 640, height: 360 });
+    await page.goto("/workbench#decision");
     await page.getByRole("heading", { name: "Decision recorded · approve" }).scrollIntoViewIfNeeded();
     expect(
       await page.evaluate(
@@ -422,7 +426,7 @@ test.describe("complete golden fixture journey", () => {
     test.setTimeout(45_000);
     const observed = observeNetwork(page);
     await page.setViewportSize({ width: 1440, height: 900 });
-    await page.goto("/workbench");
+    await page.goto("/workbench#decision");
     const bootstrap = await bootstrapFinalSession(page);
     expect(bootstrap.runId).not.toBe(approvedRunId);
     expect(bootstrap.snapshot.packet!.fingerprint).toBe(approvedPacketFingerprint);

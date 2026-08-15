@@ -3,12 +3,14 @@
 import Link from "next/link";
 import {
   type FormEvent,
+  type RefObject,
   useEffect,
   useId,
   useRef,
   useState,
 } from "react";
 
+import { useFocusBoundary } from "../use-focus-boundary";
 import {
   createEmptyIntake,
   hasValidationErrors,
@@ -21,21 +23,31 @@ import styles from "./intake-scope.module.css";
 
 type IntakeScopeProps = {
   goldenDraft: IntakeDraft;
+  startWithGolden?: boolean;
 };
 
 const emptyValidation: IntakeValidation = {
   claimFields: {},
 };
 
-export function IntakeScope({ goldenDraft }: IntakeScopeProps) {
-  const [draft, setDraft] = useState<IntakeDraft>(createEmptyIntake);
+export function IntakeScope({
+  goldenDraft,
+  startWithGolden = false,
+}: IntakeScopeProps) {
+  const [draft, setDraft] = useState<IntakeDraft>(() =>
+    startWithGolden ? structuredClone(goldenDraft) : createEmptyIntake(),
+  );
   const [validation, setValidation] =
     useState<IntakeValidation>(emptyValidation);
   const [approved, setApproved] = useState(false);
-  const [isFixtureCopy, setIsFixtureCopy] = useState(false);
+  const [isFixtureCopy, setIsFixtureCopy] = useState(startWithGolden);
+  const [editOpen, setEditOpen] = useState(false);
   const addClaimButton = useRef<HTMLButtonElement>(null);
   const addClarificationButton = useRef<HTMLButtonElement>(null);
   const continuationLink = useRef<HTMLAnchorElement>(null);
+  const editDialog = useRef<HTMLElement>(null);
+  const editTrigger = useRef<HTMLButtonElement>(null);
+  const researchQuestion = useRef<HTMLTextAreaElement>(null);
   const pendingClarificationFocus = useRef<number | "add" | null>(null);
   const claimSequence = useRef(0);
   const instanceId = useId().replaceAll(":", "");
@@ -157,10 +169,38 @@ export function IntakeScope({ goldenDraft }: IntakeScopeProps) {
     setValidation(emptyValidation);
   }
 
+  function closeEditor() {
+    setEditOpen(false);
+    requestAnimationFrame(() => editTrigger.current?.focus());
+  }
+
+  useFocusBoundary({
+    active: startWithGolden && editOpen,
+    boundaryRef: editDialog,
+    initialFocusRef: researchQuestion,
+    onDismiss: closeEditor,
+  });
+
   const statusText = approved ? "Scope approved" : "Awaiting scope approval";
 
+  if (startWithGolden && !editOpen) {
+    return (
+      <GoldenScopePreview
+        draft={draft}
+        editButtonRef={editTrigger}
+        onEdit={() => setEditOpen(true)}
+      />
+    );
+  }
+
   return (
-    <main className={styles.page}>
+    <main
+      ref={editDialog}
+      className={styles.page}
+      role={startWithGolden ? "dialog" : undefined}
+      aria-modal={startWithGolden ? true : undefined}
+      aria-label={startWithGolden ? "Edit scope" : undefined}
+    >
       <header className={styles.masthead}>
         <div className={styles.mastheadInner}>
           <div className={styles.brand}>
@@ -168,7 +208,9 @@ export function IntakeScope({ goldenDraft }: IntakeScopeProps) {
             <span>Bounded evidence workspace</span>
           </div>
           <span className={styles.modeBadge}>
-            {isFixtureCopy ? "Fixture copy" : "Draft intake"}
+            {isFixtureCopy
+              ? "Recorded demo · editable fixture copy"
+              : "Draft intake"}
           </span>
         </div>
       </header>
@@ -233,6 +275,7 @@ export function IntakeScope({ goldenDraft }: IntakeScopeProps) {
                   <div className={styles.fieldWide}>
                     <label htmlFor="research-question">Research question</label>
                     <textarea
+                      ref={researchQuestion}
                       id="research-question"
                       value={draft.originalQuestion}
                       onChange={(event) =>
@@ -437,15 +480,26 @@ export function IntakeScope({ goldenDraft }: IntakeScopeProps) {
                   <span className={styles.ledgerRule}>Claim contract</span>
                   <h2 id="claims-heading">Testable claim ledger</h2>
                 </div>
-                <button
-                  ref={addClaimButton}
-                  className={styles.buttonSecondary}
-                  type="button"
-                  onClick={addClaim}
-                  disabled={approved}
-                >
-                  Add claim
-                </button>
+                <div className={styles.headerButtons}>
+                  <button
+                    ref={addClaimButton}
+                    className={styles.buttonSecondary}
+                    type="button"
+                    onClick={addClaim}
+                    disabled={approved}
+                  >
+                    Add claim
+                  </button>
+                  {startWithGolden ? (
+                    <button
+                      className={styles.button}
+                      type="submit"
+                      disabled={approved}
+                    >
+                      Approve scope and open recorded demo
+                    </button>
+                  ) : null}
+                </div>
               </header>
               <div className={styles.panelBody}>
                 {draft.claims.length === 0 ? (
@@ -584,19 +638,23 @@ export function IntakeScope({ goldenDraft }: IntakeScopeProps) {
                         <Link
                           ref={continuationLink}
                           className={`${styles.button} ${styles.continueLink}`}
-                          href="/workbench"
+                          href="/workbench#evidence"
                         >
-                          Continue to recorded fixture workbench
+                          {startWithGolden
+                            ? "Open recorded demo"
+                            : "Continue to recorded fixture workbench"}
                         </Link>
                       </>
                     ) : null}
-                    <button
-                      className={styles.button}
-                      type="submit"
-                      disabled={approved}
-                    >
-                      Approve claim scope
-                    </button>
+                    {!startWithGolden ? (
+                      <button
+                        className={styles.button}
+                        type="submit"
+                        disabled={approved}
+                      >
+                        Approve claim scope
+                      </button>
+                    ) : null}
                   </div>
                 </div>
               </div>
@@ -604,6 +662,43 @@ export function IntakeScope({ goldenDraft }: IntakeScopeProps) {
           </div>
         </form>
       </div>
+    </main>
+  );
+}
+
+function GoldenScopePreview({
+  draft,
+  editButtonRef,
+  onEdit,
+}: {
+  draft: IntakeDraft;
+  editButtonRef: RefObject<HTMLButtonElement | null>;
+  onEdit: () => void;
+}) {
+  return (
+    <main className={styles.page}>
+      <header className={styles.masthead}>
+        <div className={styles.mastheadInner}>
+          <div className={styles.brand}><strong>EvidenceForge</strong><span>Recorded demo</span></div>
+          <span className={styles.modeBadge}>Fixture</span>
+        </div>
+      </header>
+      <section className={styles.preview} aria-labelledby="recorded-scope-title">
+        <header>
+          <p>Recorded demo · editable fixture copy</p>
+          <h1 id="recorded-scope-title">Review the scope.</h1>
+          <span>{draft.originalQuestion}</span>
+        </header>
+        <ol aria-label="Recorded claim summaries">
+          {draft.claims.slice(0, 3).map((claim, index) => (
+            <li key={claim.id}><b>{String(index + 1).padStart(2, "0")}</b><span>{claim.statement}</span></li>
+          ))}
+        </ol>
+        <div className={styles.previewActions}>
+          <Link className={styles.button} href="/workbench#evidence">Open recorded demo</Link>
+          <button ref={editButtonRef} className={styles.buttonSecondary} type="button" onClick={onEdit}>Edit scope</button>
+        </div>
+      </section>
     </main>
   );
 }

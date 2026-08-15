@@ -10,7 +10,7 @@ test.describe("objection dispositions and selective revision", () => {
   test("shows accepted-only changes, causal objections, and unresolved final risk", async ({
     page,
   }) => {
-    await page.goto("/workbench");
+    await page.goto("/workbench#review");
     const panel = page.getByRole("region", {
       name: "Objection dispositions and selective revision",
     });
@@ -129,6 +129,7 @@ test.describe("objection dispositions and selective revision", () => {
     await expect(page.getByText(/private-sentinel/i)).toHaveCount(0);
 
     await page.goto("/workbench?packet=denied");
+    await page.getByRole("link", { name: "06 Review" }).click();
     const denied = page.getByRole("region", {
       name: "Objection dispositions and selective revision",
     });

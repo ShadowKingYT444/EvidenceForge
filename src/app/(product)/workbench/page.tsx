@@ -11,7 +11,10 @@ import {
   buildObjectionDispositionModel,
   buildObjectionDispositionScenarioModel,
 } from "@/features/workbench/objection-disposition-state";
-import { WorkbenchShell } from "@/features/workbench/workbench-shell";
+import {
+  WorkbenchShell,
+  type WorkbenchStageId,
+} from "@/features/workbench/workbench-shell";
 import type { FinalDecisionPanelModel } from "@/features/workbench/final-decision-panel";
 import { loadProcessLocalRunFromApi } from "@/features/workbench/process-local-run-loader";
 import {
@@ -143,6 +146,33 @@ export default async function WorkbenchPage({
         : buildObjectionDispositionModel(prepared.run, evidenceMatrix)
       : null;
 
+  let initialStage: WorkbenchStageId = "evidence";
+  if (packet !== undefined) initialStage = "packet";
+  if (protocol !== undefined) initialStage = "experiment";
+  if (dispositions !== undefined) initialStage = "review";
+  if (
+    scenario === "timeout" ||
+    scenario === "refusal" ||
+    scenario === "invalid-json" ||
+    scenario === "invalid-schema" ||
+    scenario === "invalid-output" ||
+    scenario === "retry-exhausted" ||
+    scenario === "retry" ||
+    scenario === "source-mismatch" ||
+    scenario === "missing-source" ||
+    scenario === "stale-execution"
+  ) initialStage = "audit";
+  if (scenario === "awaiting") initialStage = "scope";
+  if (scenario === "collecting") initialStage = "packet";
+  if (scenario === "reviewer-decision") initialStage = "review";
+  if (
+    scenario === "final-decision" ||
+    scenario === "approved" ||
+    scenario === "rejected" ||
+    scenario === "failed" ||
+    runId !== undefined
+  ) initialStage = "decision";
+
   return (
     <WorkbenchShell
       model={model}
@@ -153,6 +183,8 @@ export default async function WorkbenchPage({
       objectionDisposition={objectionDisposition}
       finalDecision={finalDecision}
       initialEvidenceId={evidence ?? null}
+      allowSimulatedStates={runId === undefined}
+      initialStage={initialStage}
     />
   );
 }

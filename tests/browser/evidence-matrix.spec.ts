@@ -11,7 +11,7 @@ const axeScriptPath = requireFromA11yPlugin.resolve("axe-core/axe.min.js");
 
 test.describe("claim-by-source evidence matrix", () => {
   test("renders a semantic source-of-truth matrix with labeled relationship controls", async ({ page }) => {
-    await page.goto("/workbench");
+    await openMatrix(page, "/workbench");
 
     const matrix = page.getByRole("region", { name: "Claim by source evidence matrix" });
     await expect(matrix.getByRole("table", { name: "Claim by source evidence relationships" })).toBeVisible();
@@ -24,7 +24,7 @@ test.describe("claim-by-source evidence matrix", () => {
   });
 
   test("uses arrow keys to select a cell, opens exact evidence, and returns focus on close", async ({ page }) => {
-    await page.goto("/workbench");
+    await openMatrix(page, "/workbench");
 
     const matrix = page.getByRole("region", { name: "Claim by source evidence matrix" });
     const first = matrix.getByRole("button", { name: /Claim 1.*Source 1/ });
@@ -77,7 +77,7 @@ test.describe("claim-by-source evidence matrix", () => {
     page.on("request", (request) => {
       if (!request.url().startsWith("http://127.0.0.1:3100/")) externalRequests.push(request.url());
     });
-    await page.goto("/workbench?packet=denied");
+    await openMatrix(page, "/workbench?packet=denied");
     const matrix = page.getByRole("region", { name: "Claim by source evidence matrix" });
     const denied = matrix.getByRole("button", { name: /Claim 1.*Source 1/ });
     await denied.click();
@@ -119,14 +119,14 @@ test.describe("claim-by-source evidence matrix", () => {
   });
 
   test("keeps multiple cards, mixed relationships, failures, and metadata mismatch as separate ledger records", async ({ page }) => {
-    await page.goto("/workbench?matrix=duplicate");
+    await openMatrix(page, "/workbench?matrix=duplicate");
     const duplicateCell = page.getByRole("button", { name: /2 evidence.*Multiple evidence records/ });
     await duplicateCell.click();
     const duplicateDrawer = page.getByRole("dialog", { name: /Evidence verification/ });
     await expect(duplicateDrawer.getByRole("heading", { name: "Source ledger" })).toHaveCount(1);
     await expect(duplicateDrawer.locator("article")).toHaveCount(2);
 
-    await page.goto("/workbench?matrix=failure");
+    await openMatrix(page, "/workbench?matrix=failure");
     const failureCell = page.getByRole("button", {
       name: /Contradicts.*Verification failure.*Metadata mismatch/,
     });
@@ -143,7 +143,7 @@ test.describe("claim-by-source evidence matrix", () => {
   });
 
   test("announces simultaneous failure and mismatch warnings without replacing the relationship", async ({ page }) => {
-    await page.goto("/workbench?matrix=failure");
+    await openMatrix(page, "/workbench?matrix=failure");
     const cell = page.getByRole("button", {
       name: /Contradicts.*Verification failure · Metadata mismatch/,
     });
@@ -161,18 +161,18 @@ test.describe("claim-by-source evidence matrix", () => {
     ] as const;
 
     for (const [scenario, label] of documentStates) {
-      await page.goto(`/workbench?matrix=${scenario}`);
+      await openMatrix(page, `/workbench?matrix=${scenario}`);
       await expect(page.getByText(label, { exact: true }).first()).toBeVisible();
     }
 
-    await page.goto("/workbench?matrix=duplicate");
+    await openMatrix(page, "/workbench?matrix=duplicate");
     await expect(page.getByRole("button", { name: /2 evidence.*Multiple evidence records/ })).toBeVisible();
-    await page.goto("/workbench?matrix=failure");
+    await openMatrix(page, "/workbench?matrix=failure");
     await expect(page.getByRole("button", { name: /Verification failure/ })).toBeVisible();
-    await page.goto("/workbench?matrix=missing-evidence");
+    await openMatrix(page, "/workbench?matrix=missing-evidence");
     await expect(page.getByRole("button", { name: /Missing evidence.*0 evidence/ }).first()).toBeVisible();
 
-    await page.goto("/workbench?matrix=long-content");
+    await openMatrix(page, "/workbench?matrix=long-content");
     const longCell = page.getByRole("button", { name: /Claim 1.*Source 1/ });
     await longCell.click();
     const drawer = page.getByRole("dialog", { name: /Evidence verification/ });
@@ -190,7 +190,7 @@ test.describe("claim-by-source evidence matrix", () => {
     page.on("requestfailed", (request) => failedRequests.push(request.url()));
 
     await page.setViewportSize({ width: 1280, height: 720 });
-    await page.goto("/workbench");
+    await openMatrix(page, "/workbench");
     await page.getByRole("region", { name: "Claim by source evidence matrix" }).scrollIntoViewIfNeeded();
     await page.getByRole("button", { name: /Claim 1.*Source 1/ }).click();
     const desktopDrawer = page.getByRole("dialog", { name: /Evidence verification/ });
@@ -205,7 +205,7 @@ test.describe("claim-by-source evidence matrix", () => {
     expect(await hasPageOverflow(page)).toBe(false);
 
     await page.setViewportSize({ width: 390, height: 844 });
-    await page.goto("/workbench?matrix=failure");
+    await openMatrix(page, "/workbench?matrix=failure");
     await page.getByRole("button", { name: /Claim 1.*Source 1/ }).click();
     await expect(page.getByRole("dialog", { name: /Evidence verification/ })).toBeVisible();
     expect(await hasPageOverflow(page)).toBe(false);
@@ -224,4 +224,14 @@ test.describe("claim-by-source evidence matrix", () => {
 
 async function hasPageOverflow(page: import("@playwright/test").Page) {
   return page.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth);
+}
+
+async function openMatrix(
+  page: import("@playwright/test").Page,
+  url: string,
+) {
+  const separator = url.includes("#") ? "" : "#evidence";
+  await page.goto(`${url}${separator}`);
+  await page.getByRole("button", { name: "View" }).click();
+  await page.getByRole("menuitem", { name: "Matrix" }).click();
 }

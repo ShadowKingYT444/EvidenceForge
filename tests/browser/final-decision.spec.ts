@@ -25,7 +25,7 @@ type BootstrapSnapshot = {
 };
 
 async function startFinalReview(page: Page) {
-  await page.goto("/workbench");
+  await page.goto("/workbench#decision");
   await page.getByRole("button", { name: "Start isolated final review" }).click();
   await expect(page).toHaveURL(/\/workbench\?runId=[^&]+$/);
   const runId = new URL(page.url()).searchParams.get("runId");
@@ -33,7 +33,6 @@ async function startFinalReview(page: Page) {
   await expect(
     page.getByRole("heading", { name: "Final decision required" }),
   ).toBeVisible();
-  await expect(page.getByText(`Run ${runId} · contract 0.2`)).toBeVisible();
   return runId!;
 }
 
@@ -84,8 +83,9 @@ test("loads the canonical v0.2 snapshot, validates approval, and gates the canon
       "&dispositions=awaiting&scenario=approved" +
       "&packet=empty&matrix=empty&protocol=abstention",
   );
-  await expect(page.getByText(`Run ${runId} · contract 0.2`)).toBeVisible();
+  await page.getByRole("link", { name: "02 Packet" }).click();
   await expect(page.getByText(before.run.packet!.fingerprint)).toBeVisible();
+  await page.getByRole("link", { name: "08 Decision" }).click();
   await expect(
     page.getByRole("heading", { name: "Final decision required" }),
   ).toBeVisible();

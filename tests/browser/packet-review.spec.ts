@@ -13,7 +13,7 @@ test.describe("controlled source-packet review", () => {
   test("renders the frozen fixture receipt, provenance, independent rights, and hashes", async ({
     page,
   }) => {
-    await page.goto("/workbench");
+    await page.goto("/workbench#packet");
 
     const packet = page.getByRole("region", { name: "Source packet checkpoint" });
     await expect(

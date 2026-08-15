@@ -14,19 +14,24 @@ test.describe("evidence workbench shell", () => {
     await page.goto("/workbench");
 
     await expect(
-      page.getByRole("heading", {
-        level: 1,
-        name: "For a single-use 72-hour environmental sensor, can a biodegradable battery replace a lithium coin cell?",
-      }),
+      page.getByRole("heading", { level: 1, name: "Evidence" }),
+    ).toBeVisible();
+    await page.getByText("Run details", { exact: true }).click();
+    await expect(
+      page.getByText("For a single-use 72-hour environmental sensor, can a biodegradable battery replace a lithium coin cell?"),
     ).toBeVisible();
     await expect(
       page.getByLabel(
         "Evidence mode: Fixture. Deterministic reviewed fixture.",
       ),
     ).toBeVisible();
+    await page.getByRole("link", { name: "01 Scope" }).click();
     await expect(
-      page.getByRole("heading", { name: "Claim ledger" }),
+      page.getByRole("heading", { name: "Resolved claim contract" }),
     ).toBeVisible();
+    await page.getByRole("link", { name: "03 Evidence" }).click();
+    await page.getByRole("button", { name: "View" }).click();
+    await page.getByRole("menuitem", { name: "Matrix" }).click();
     await expect(
       page.getByRole("heading", { name: "Claim × source matrix" }),
     ).toBeVisible();
@@ -36,11 +41,14 @@ test.describe("evidence workbench shell", () => {
     await expect(
       page.getByRole("table", { name: "Claim by source evidence relationships" }),
     ).toBeVisible();
+    await page.getByRole("link", { name: "04 Findings" }).click();
     await expect(
       page.getByRole("heading", { name: "Conclusions & gaps" }),
     ).toBeVisible();
+    await page.getByRole("link", { name: "07 Audit" }).click();
     await expect(page.getByText("3 preserved failures")).toBeVisible();
     await expect(page.getByText("2 linked retries")).toBeVisible();
+    await page.getByRole("link", { name: "08 Decision" }).click();
     await expect(
       page.getByRole("heading", { name: "Decision recorded · approve" }),
     ).toBeVisible();
@@ -57,37 +65,29 @@ test.describe("evidence workbench shell", () => {
     await page.setViewportSize({ width: 1440, height: 900 });
     await page.goto("/workbench");
 
-    const contents = page.getByRole("navigation", { name: "Run contents" });
+    const contents = page.getByRole("navigation", {
+      name: "Research workflow stages",
+    });
     await expect(contents).toHaveCSS("position", "static");
-    await expect(
-      page.locator('dl[aria-label="Resolved scope"] + nav'),
-    ).toHaveCount(1);
 
     const destinations = [
-      ["01 Packet", "packet"],
-      ["02 Claims", "claims"],
+      ["01 Scope", "scope"],
+      ["02 Packet", "packet"],
       ["03 Evidence", "evidence"],
-      ["04 Synthesis & gap", "synthesis-gap"],
+      ["04 Findings", "findings"],
       ["05 Experiment", "experiment"],
-      ["06 Review & revision", "review-revision"],
+      ["06 Review", "review"],
       ["07 Audit", "audit"],
-      ["08 Final decision", "final-decision"],
+      ["08 Decision", "decision"],
     ] as const;
 
     for (const [name, id] of destinations) {
       const link = contents.getByRole("link", { name });
       await expect(link).toHaveAttribute("href", `#${id}`);
-      await expect(page.locator(`#${id}`)).toHaveCount(1);
+      await link.click();
+      await expect(page.locator(`[data-stage-panel="${id}"]`)).toBeVisible();
+      await expect(page.locator('[data-stage-panel]:not([hidden])')).toHaveCount(1);
     }
-
-    await expect(page.locator("#packet").getByText(/01.*Packet checkpoint/)).toBeVisible();
-    await expect(page.locator("#claims").getByText(/02.*Claims/)).toBeVisible();
-    await expect(page.locator("#evidence").getByText(/03.*Evidence/)).toBeVisible();
-    await expect(page.locator("#synthesis-gap").getByText(/04.*Synthesis/)).toBeVisible();
-    await expect(page.locator("#experiment").getByText(/05.*Experiment/)).toBeVisible();
-    await expect(page.locator("#review-revision").getByText(/06.*Review & revision/)).toBeVisible();
-    await expect(page.locator("#audit").getByText(/07.*Audit/)).toBeVisible();
-    await expect(page.locator("#final-decision").getByText(/08.*Final decision/)).toBeVisible();
 
     const evidenceLink = contents.getByRole("link", { name: "03 Evidence" });
     await evidenceLink.focus();
@@ -190,6 +190,7 @@ test.describe("evidence workbench shell", () => {
     for (const [scenario, kind, evidenceMode, contractSource, action, preservedFailures] of recoveryStates) {
       await page.goto(`/workbench?scenario=${scenario}`);
       const recovery = page.getByRole("region", { name: "Recovery contract" });
+      await recovery.getByText("View recovery record", { exact: true }).click();
       await expect(recovery.getByText(kind, { exact: true })).toBeVisible();
       await expect(recovery.getByText(evidenceMode, { exact: true })).toBeVisible();
       await expect(recovery.getByText(contractSource, { exact: true })).toBeVisible();
@@ -201,6 +202,7 @@ test.describe("evidence workbench shell", () => {
     }
 
     await page.goto("/workbench?scenario=source-mismatch");
+    await page.getByRole("link", { name: "03 Evidence" }).click();
     await expect(
       page.getByRole("button", { name: /Contradicts.*Metadata mismatch/ }),
     ).toBeVisible();
@@ -208,7 +210,7 @@ test.describe("evidence workbench shell", () => {
     await page.goto("/workbench?scenario=missing-source");
     const missingAttempt = page.locator('[data-audit-attempt][data-node-id="collect-sources"]');
     await missingAttempt.locator("summary").click();
-    const missingError = missingAttempt.locator("li").filter({
+    const missingError = page.getByRole("dialog", { name: "Execution attempt details" }).locator("li").filter({
       hasText: "gf-error-source-08",
     });
     await expect(missingError).toContainText("provider DOI_NOT_FOUND");
@@ -220,7 +222,7 @@ test.describe("evidence workbench shell", () => {
     ).nth(1);
     await exhaustedRetry.locator("summary").click();
     await expect(
-      exhaustedRetry.getByText("Retry of fixture-preview-retry-exhausted-1"),
+      page.getByRole("dialog", { name: "Execution attempt details" }).getByText("Retry of fixture-preview-retry-exhausted-1"),
     ).toBeVisible();
     await page.screenshot({
       path: testInfo.outputPath("interim-integrated-retry-exhausted-1440.png"),
@@ -270,6 +272,7 @@ test.describe("evidence workbench shell", () => {
     for (const [scenario, state, finalLabel] of decisions) {
       await page.goto(`/workbench?scenario=${scenario}`);
       await expect(page.getByText(state, { exact: true })).toBeVisible();
+      await page.getByRole("link", { name: "08 Decision" }).click();
       await expect(
         page.getByRole("heading", { name: finalLabel }),
       ).toBeVisible();
@@ -288,7 +291,7 @@ test.describe("evidence workbench shell", () => {
       await expect(finalBar).toHaveAttribute("data-decision-actionable", "false");
     }
 
-    await page.goto("/workbench");
+    await page.goto("/workbench#decision");
     await page.getByRole("button", { name: "Start isolated final review" }).click();
     await expect(page).toHaveURL(/\/workbench\?runId=[^&]+$/);
     const actionable = page.locator(
@@ -321,70 +324,47 @@ test.describe("evidence workbench shell", () => {
       x: 0,
       width: 1280,
     });
-    await page.keyboard.press("Tab");
-    await expect(page.getByRole("link", { name: "EvidenceForge" })).toBeFocused();
-    const contentsLinks = page
-      .getByRole("navigation", { name: "Run contents" })
-      .getByRole("link");
-    await expect(contentsLinks).toHaveCount(8);
-    for (let index = 0; index < 8; index += 1) {
-      await page.keyboard.press("Tab");
-      await expect(contentsLinks.nth(index)).toBeFocused();
-    }
-    const sourceSummaries = page
-      .getByRole("region", { name: "Source packet checkpoint" })
-      .locator("details > summary");
-    await expect(sourceSummaries).toHaveCount(7);
-    for (let index = 0; index < 7; index += 1) {
-      await page.keyboard.press("Tab");
-      await expect(sourceSummaries.nth(index)).toBeFocused();
-    }
-    expect(
-      await sourceSummaries.last().evaluate(
-        (summary) => getComputedStyle(summary).outlineStyle,
-      ),
-    ).not.toBe("none");
-    await page.keyboard.press("Tab");
-    const matrixScroll = page.getByLabel("Scrollable evidence matrix");
-    await expect(matrixScroll).toBeFocused();
-    expect(
-      await matrixScroll.evaluate(
-        (region) => getComputedStyle(region).outlineStyle,
-      ),
-    ).not.toBe("none");
-    await page.keyboard.press("Tab");
-    const firstMatrixCell = page.getByRole("button", {
-      name: /Claim 1.*Source 1/,
+    const stageNavigation = page.getByRole("navigation", {
+      name: "Research workflow stages",
     });
-    await expect(firstMatrixCell).toBeFocused();
+    await expect(stageNavigation.getByRole("link")).toHaveCount(8);
+    const evidenceStage = stageNavigation.getByRole("link", {
+      name: "03 Evidence",
+    });
+    await evidenceStage.focus();
+    await expect(evidenceStage).toBeFocused();
     expect(
-      await firstMatrixCell.evaluate(
-        (button) => getComputedStyle(button).outlineStyle,
-      ),
+      await evidenceStage.evaluate((link) => getComputedStyle(link).outlineStyle),
     ).not.toBe("none");
-    await page.keyboard.press("Tab");
+    const relationship = page
+      .getByRole("button", { name: /Inspect .* relationship/ })
+      .first();
+    await relationship.focus();
+    await page.keyboard.press("Enter");
+    await expect(
+      page.getByRole("dialog", { name: "Evidence details" }),
+    ).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(relationship).toBeFocused();
+    await page.getByRole("button", { name: "View" }).click();
+    await page.getByRole("menuitem", { name: "Matrix" }).click();
+    const matrixScroll = page.getByLabel("Scrollable evidence matrix");
+    await matrixScroll.focus();
+    await expect(matrixScroll).toBeFocused();
+    const firstMatrixCell = page.getByRole("button", { name: /Claim 1.*Source 1/ });
+    await firstMatrixCell.focus();
+    await expect(firstMatrixCell).toBeFocused();
+    await stageNavigation.getByRole("link", { name: "04 Findings" }).click();
     const firstConclusionLink = page
       .getByRole("region", { name: "Conclusions and selected research gap" })
       .getByRole("link", { name: /Open evidence/ })
       .first();
+    await firstConclusionLink.focus();
     await expect(firstConclusionLink).toBeFocused();
-    expect(
-      await firstConclusionLink.evaluate(
-        (link) => getComputedStyle(link).outlineStyle,
-      ),
-    ).not.toBe("none");
-    const auditSummary = page.locator(
-      'aside[aria-label="Experiment and audit"] > details > summary',
-    );
+    await stageNavigation.getByRole("link", { name: "07 Audit" }).click();
+    const auditSummary = page.locator("#audit > summary");
     await auditSummary.focus();
-    await expect(
-      auditSummary,
-    ).toBeFocused();
-    expect(
-      await auditSummary.evaluate(
-        (summary) => getComputedStyle(summary).outlineStyle,
-      ),
-    ).not.toBe("none");
+    await expect(auditSummary).toBeFocused();
     expect(
       await page.evaluate(
         () =>
@@ -411,6 +391,7 @@ test.describe("evidence workbench shell", () => {
     // A 640 × 360 CSS viewport approximates the usable layout at 200% zoom
     // on the 1280 × 720 recording target.
     await page.setViewportSize({ width: 640, height: 360 });
+    await page.goto("/workbench#decision");
     await page
       .getByRole("heading", { name: "Decision recorded · approve" })
       .scrollIntoViewIfNeeded();

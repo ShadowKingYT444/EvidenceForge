@@ -1,0 +1,15 @@
+services:
+  - type: web
+    name: evidenceforge-demo
+    runtime: node
+    plan: free
+    region: oregon
+    autoDeployTrigger: "off"
+    buildCommand: corepack pnpm install --frozen-lockfile && corepack pnpm build
+    startCommand: corepack pnpm start
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_VERSION
+        value: 24.16.0
+      - key: EVIDENCE_MODE
+        value: fixture

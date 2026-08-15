@@ -607,3 +607,18 @@
     animation-iteration-count: 1 !important;
   }
 }
+
+/* Matrix is an expert surface but stays inside the same dark system. */
+.surface, .detail, .table th, .table td, .cell, .cell[data-relationship="missing"] { background: #151619 !important; color: #f1f1f2; }
+.surface { box-shadow: none; }
+.surface :is(.index, .table caption, .summary span, .legendItem, .evidenceCount, .warningFlag, .detailHeader > div > span, .detailContext, .detailContext strong, .detailContext small, .attemptIndex) { color: #b8bac1; }
+.surface :is(.cellTop strong, .claimColumn strong, .detailHeader h3, .detailContext p, .detailContext strong) { color: #f1f1f2; }
+.surface :is(.legendItem[data-relationship="supports"], .cell[data-relationship="supports"] .cellTop strong) { color: #8fd1aa; }
+.surface :is(.legendItem[data-relationship="contradicts"], .cell[data-relationship="contradicts"] .cellTop strong) { color: #f1b0b0; }
+.surface :is(.legendItem[data-relationship="unresolved"], .cell[data-relationship="unresolved"] .cellTop strong) { color: #e8c875; }
+.detail { border-color: #454850; box-shadow: none; }
+.detail, .detail * { min-width: 0; max-width: 100%; }
+.detail blockquote { width: auto; overflow-wrap: anywhere; }
+.detailHeader, .detailContext, .ledgerGrid, .ledgerSections, .verificationLayers { border-color: #2a2c31; }
+.detailHeader button { border-color: #454850; background: #202126; color: #f1f1f2; }
+@media (max-width: 42rem) { .detail { position: fixed; inset: auto 0 0; z-index: 90; box-sizing: border-box; width: 100vw; max-width: 100vw; max-height: 80dvh; overflow: auto; } .detail blockquote { box-sizing: border-box; width: calc(100vw - 2rem) !important; max-width: calc(100vw - 2rem) !important; } }

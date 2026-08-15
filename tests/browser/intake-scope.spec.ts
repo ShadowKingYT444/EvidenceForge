@@ -82,7 +82,9 @@ test.describe("intake and scope approval", () => {
     await expect(page.getByText("Recommended demo path", { exact: true })).toBeVisible();
     await page.getByRole("button", { name: "Load golden fixture" }).click();
 
-    await expect(page.getByText("Fixture copy", { exact: true })).toBeVisible();
+    await expect(
+      page.getByText("Recorded demo · editable fixture copy", { exact: true }),
+    ).toBeVisible();
     await expect(page.getByLabel("Research question")).toHaveValue(
       "For a single-use 72-hour environmental sensor, can a biodegradable battery replace a lithium coin cell?",
     );

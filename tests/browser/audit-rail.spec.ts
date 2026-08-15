@@ -2,6 +2,8 @@ import { createRequire } from "node:module";
 
 import { expect, test } from "@playwright/test";
 
+import { expectContainedFocus } from "./focus-boundary";
+
 const requireFromA11yPlugin = createRequire(
   createRequire(__filename).resolve("eslint-plugin-jsx-a11y"),
 );
@@ -11,7 +13,7 @@ test.describe("node execution audit rail", () => {
   test("renders actual fixture attempts with full bounded disclosure", async ({
     page,
   }) => {
-    await page.goto("/workbench");
+    await page.goto("/workbench#audit");
 
     const attempts = page.locator("[data-audit-attempt]");
     await expect(attempts).toHaveCount(10);
@@ -34,57 +36,65 @@ test.describe("node execution audit rail", () => {
     );
 
     const failedPlan = planAttempts.nth(0);
+    await expect(page.getByText("Requested provider")).toHaveCount(0);
     await failedPlan.locator("summary").click();
-    await expect(failedPlan.getByText("Requested provider")).toBeVisible();
-    await expect(failedPlan.getByText("Returned provider")).toBeVisible();
-    await expect(failedPlan.getByText("Requested model")).toBeVisible();
-    await expect(failedPlan.getByText("Returned model")).toBeVisible();
-    await expect(failedPlan.getByText("Prompt ID")).toBeVisible();
-    await expect(failedPlan.getByText("Prompt version")).toBeVisible();
-    await expect(failedPlan.getByText("Prompt hash")).toBeVisible();
-    await expect(failedPlan.getByText("Output schema")).toBeVisible();
-    await expect(failedPlan.getByText("Evidence mode")).toBeVisible();
+    const detail = page.getByRole("dialog", { name: "Execution attempt details" });
+    await expect(detail.getByText("Requested provider")).toBeVisible();
+    await expect(detail.getByText("Returned provider")).toBeVisible();
+    await expect(detail.getByText("Requested model")).toBeVisible();
+    await expect(detail.getByText("Returned model")).toBeVisible();
+    await expect(detail.getByText("Prompt ID")).toBeVisible();
+    await expect(detail.getByText("Prompt version")).toBeVisible();
+    await expect(detail.getByText("Prompt hash")).toBeVisible();
+    await expect(detail.getByText("Output schema")).toBeVisible();
+    await expect(detail.getByText("Evidence mode")).toBeVisible();
     await expect(
-      failedPlan.getByRole("heading", { name: "Validation" }),
+      detail.getByRole("heading", { name: "Validation" }),
     ).toBeVisible();
-    await expect(failedPlan.getByText("Client latency")).toBeVisible();
-    await expect(failedPlan.getByText("Provider total")).toBeVisible();
-    await expect(failedPlan.getByText("Input tokens")).toBeVisible();
-    await expect(failedPlan.getByText("Estimated cost")).toBeVisible();
-    await expect(failedPlan.getByText("Unavailable", { exact: true })).toHaveCount(
+    await expect(detail.getByText("Client latency")).toBeVisible();
+    await expect(detail.getByText("Provider total")).toBeVisible();
+    await expect(detail.getByText("Input tokens")).toBeVisible();
+    await expect(detail.getByText("Estimated cost")).toBeVisible();
+    await expect(detail.getByText("Unavailable", { exact: true })).toHaveCount(
       16,
     );
     await expect(
-      failedPlan.getByText("sampleSizeBasis was omitted").first(),
+      detail.getByText("sampleSizeBasis was omitted").first(),
     ).toBeVisible();
     await expect(
-      failedPlan.getByText("invalid model output", { exact: true }),
+      detail.getByText("invalid model output", { exact: true }),
     ).toBeVisible();
     await expect(
-      failedPlan
+      detail
         .getByText("Evidence mode")
         .locator("..")
         .getByText("fixture", { exact: true }),
     ).toBeVisible();
+    await expectContainedFocus({
+      page,
+      boundary: detail,
+      initialFocus: detail.getByRole("button", { name: "Close execution attempt details" }),
+      trigger: failedPlan.locator("summary"),
+    });
 
     const successfulRetry = planAttempts.nth(1);
     await successfulRetry.locator("summary").click();
     await expect(
-      successfulRetry.getByText("Retry of gf-execution-plan-1"),
+      page.getByRole("dialog", { name: "Execution attempt details" }).getByText("Retry of gf-execution-plan-1"),
     ).toBeVisible();
   });
 
   test("renders empty, awaiting, and partial audit history without future attempts", async ({
     page,
   }) => {
-    await page.goto("/workbench?scenario=awaiting");
+    await page.goto("/workbench?scenario=awaiting#audit");
     await expect(page.locator("[data-audit-attempt]")).toHaveCount(0);
     await expect(
       page.getByText("No execution attempts recorded", { exact: true }),
     ).toBeVisible();
     await expect(page.getByText("Running", { exact: true })).toHaveCount(0);
 
-    await page.goto("/workbench?scenario=partial");
+    await page.goto("/workbench?scenario=partial#audit");
     await expect(page.locator("[data-audit-attempt]")).toHaveCount(4);
     await expect(page.getByText("Partial ledger", { exact: true })).toBeVisible();
   });
@@ -97,7 +107,7 @@ test.describe("node execution audit rail", () => {
       page.locator('[data-audit-attempt][data-execution-status="timed_out"]'),
     ).toHaveCount(1);
     await expect(page.getByText("Timed out", { exact: true })).toBeVisible();
-    await expect(page.getByText("Attempt 1 · simulated")).toBeVisible();
+    await expect(page.getByText("Attempt 1", { exact: true })).toBeVisible();
 
     await page.goto("/workbench?scenario=refusal");
     await expect(
@@ -109,8 +119,12 @@ test.describe("node execution audit rail", () => {
     await expect(
       page.locator('[data-node-id="plan-experiment"][data-execution-status="failed"]'),
     ).toHaveCount(1);
+    await page
+      .locator('[data-node-id="plan-experiment"][data-execution-status="failed"]')
+      .locator("summary")
+      .click();
     await expect(
-      page.getByText("sampleSizeBasis was omitted").first(),
+      page.getByRole("dialog", { name: "Execution attempt details" }).getByText("sampleSizeBasis was omitted").first(),
     ).toBeVisible();
 
     await page.goto("/workbench?scenario=retry");
@@ -126,7 +140,7 @@ test.describe("node execution audit rail", () => {
   test("never labels a visual preview as a genuinely running attempt", async ({
     page,
   }) => {
-    await page.goto("/workbench?scenario=running");
+    await page.goto("/workbench?scenario=running#audit");
 
     await expect(page.getByText("Verifying evidence", { exact: true })).toBeVisible();
     await expect(page.getByText("Running", { exact: true })).toHaveCount(0);
@@ -153,7 +167,14 @@ test.describe("node execution audit rail", () => {
     await expect(page.getByText("0 running now")).toBeVisible();
     await staleAttempt.locator("summary").focus();
     await page.keyboard.press("Enter");
-    await expect(staleAttempt.getByText("Requested provider")).toBeVisible();
+    await expect(
+      page.getByRole("dialog", { name: "Execution attempt details" }).getByText("Requested provider"),
+    ).toBeVisible();
+    await page.screenshot({
+      path: testInfo.outputPath("selected-attempt-dialog.png"),
+    });
+    await page.keyboard.press("Escape");
+    await expect(page.getByRole("dialog", { name: "Execution attempt details" })).toHaveCount(0);
     expect(
       await page.evaluate(
         () =>
@@ -190,7 +211,11 @@ test.describe("node execution audit rail", () => {
     await failedAttempt.locator("summary").focus();
     await expect(failedAttempt.locator("summary")).toBeFocused();
     await page.keyboard.press("Enter");
-    await expect(failedAttempt.getByText("Requested provider")).toBeVisible();
+    await expect(
+      page.getByRole("dialog", { name: "Execution attempt details" }).getByText("Requested provider"),
+    ).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(page.getByRole("dialog", { name: "Execution attempt details" })).toHaveCount(0);
     expect(
       await page.evaluate(
         () =>
@@ -200,6 +225,7 @@ test.describe("node execution audit rail", () => {
     ).toBe(true);
     await page.screenshot({
       path: testInfo.outputPath("desktop-retry-audit-1280x720.png"),
+      fullPage: true,
     });
 
     await page.emulateMedia({ reducedMotion: "reduce" });
@@ -221,13 +247,17 @@ test.describe("node execution audit rail", () => {
     ).toBe(true);
 
     await page.setViewportSize({ width: 390, height: 844 });
-    await page.goto("/workbench?scenario=timeout");
-    const timeoutAttempt = page.locator(
-      '[data-audit-attempt][data-execution-status="timed_out"]',
-    );
-    await timeoutAttempt.locator("summary").scrollIntoViewIfNeeded();
-    await timeoutAttempt.locator("summary").click();
-    await expect(timeoutAttempt.getByText("Requested model")).toBeVisible();
+    await page.goto("/workbench?scenario=retry");
+    const mobileRetryAttempt = page.locator(
+      '[data-audit-attempt][data-execution-status="failed"]',
+    ).first();
+    await mobileRetryAttempt.locator("summary").scrollIntoViewIfNeeded();
+    await mobileRetryAttempt.locator("summary").click();
+    await expect(
+      page.getByRole("dialog", { name: "Execution attempt details" }).getByText("Requested model"),
+    ).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(page.getByRole("dialog", { name: "Execution attempt details" })).toHaveCount(0);
     expect(
       await page.evaluate(
         () =>
@@ -236,7 +266,7 @@ test.describe("node execution audit rail", () => {
       ),
     ).toBe(true);
     await page.screenshot({
-      path: testInfo.outputPath("mobile-timeout-audit.png"),
+      path: testInfo.outputPath("mobile-retry-audit.png"),
       fullPage: true,
     });
 
@@ -245,7 +275,7 @@ test.describe("node execution audit rail", () => {
   });
 
   test("does not render secrets or private prompt bodies", async ({ page }) => {
-    await page.goto("/workbench");
+    await page.goto("/workbench#audit");
     await page.locator("[data-audit-attempt]").first().locator("summary").click();
     const text = await page.locator("main").innerText();
 

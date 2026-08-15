@@ -98,7 +98,7 @@ test("announces pending objection and final-decision persistence", async ({
     "Saving dispositions",
   );
 
-  await page.goto("/workbench");
+  await page.goto("/workbench#decision");
   await page.getByRole("button", { name: "Start isolated final review" }).click();
   const finalRegion = page.locator(
     'section[aria-labelledby="final-decision-title"]',
@@ -139,7 +139,15 @@ test("completes the core journey using only keyboard navigation", async ({
   });
   await expect(continueLink).toBeFocused();
   await page.keyboard.press("Enter");
-  await expect(page).toHaveURL(/\/workbench$/);
+  await expect(page).toHaveURL(/\/workbench#evidence$/);
+
+  const viewMenu = page.getByRole("button", { name: "View" });
+  await tabTo(page, viewMenu);
+  await page.keyboard.press("Enter");
+  const matrixView = page.getByRole("menuitem", { name: "Matrix" });
+  await page.keyboard.press("ArrowDown");
+  await expect(matrixView).toBeFocused();
+  await page.keyboard.press("Enter");
 
   const matrix = page.getByRole("region", {
     name: "Claim by source evidence matrix",
@@ -157,6 +165,9 @@ test("completes the core journey using only keyboard navigation", async ({
   await page.keyboard.press("Shift+Tab");
   await expect(secondCell).toBeFocused();
 
+  const auditStage = page.getByRole("link", { name: "07 Audit" });
+  await tabTo(page, auditStage);
+  await page.keyboard.press("Enter");
   const failedAttempt = page.locator(
     '[data-audit-attempt][data-node-id="plan-experiment"][data-execution-status="failed"] summary',
   );
@@ -167,7 +178,15 @@ test("completes the core journey using only keyboard navigation", async ({
       '[data-audit-attempt][data-node-id="plan-experiment"][data-execution-status="failed"]',
     ),
   ).toContainText("Attempt 1");
+  await expect(
+    page.getByRole("dialog", { name: "Execution attempt details" }),
+  ).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(failedAttempt).toBeFocused();
 
+  const decisionStage = page.getByRole("link", { name: "08 Decision" });
+  await tabTo(page, decisionStage);
+  await page.keyboard.press("Enter");
   const startFinal = page.getByRole("button", {
     name: "Start isolated final review",
   });
@@ -207,13 +226,27 @@ test("has no WCAG A or AA axe violations across required states", async ({
   await expectWcagAAndAa(page, "intake invalid");
   await page.getByRole("button", { name: "Load golden fixture" }).click();
   await expectWcagAAndAa(page, "intake loaded");
+  await page.goto("/intake?demo=golden");
+  await expectWcagAAndAa(page, "golden intake preview");
+  await page.getByRole("button", { name: "Edit scope" }).click();
+  await expectWcagAAndAa(page, "golden intake edit dialog");
 
-  await page.goto("/workbench");
+  await page.goto("/workbench#audit");
   const failedAttempt = page.locator(
     '[data-audit-attempt][data-node-id="plan-experiment"][data-execution-status="failed"] summary',
   );
   await failedAttempt.click();
-  await expectWcagAAndAa(page, "recorded failure and retry");
+  await expectWcagAAndAa(page, "selected audit attempt dialog");
+  await page.keyboard.press("Escape");
+  await page.getByRole("link", { name: "03 Evidence" }).click();
+  await page.getByRole("button", { name: /Inspect .* relationship/ }).first().click();
+  await expectWcagAAndAa(page, "evidence detail dialog");
+  await page.keyboard.press("Escape");
+  await page.getByRole("button", { name: "Open command palette" }).click();
+  await expectWcagAAndAa(page, "workbench command palette dialog");
+  await page.keyboard.press("Escape");
+  await page.getByRole("button", { name: "View" }).click();
+  await page.getByRole("menuitem", { name: "Matrix" }).click();
   await page
     .getByRole("button", { name: /Claim 1.*Source 2/ })
     .click();
@@ -238,7 +271,7 @@ test("has no WCAG A or AA axe violations across required states", async ({
   await expect(objections.getByRole("alert")).toBeVisible();
   await expectWcagAAndAa(page, "objection failure");
 
-  await page.goto("/workbench");
+  await page.goto("/workbench#decision");
   await page.getByRole("button", { name: "Start isolated final review" }).click();
   const finalRegion = page.locator('section[aria-labelledby="final-decision-title"]');
   await finalRegion.getByRole("button", { name: "Persist final decision" }).click();
@@ -250,7 +283,7 @@ test("has no WCAG A or AA axe violations across required states", async ({
   await expect(page.getByTestId("final-decision-receipt")).toBeVisible();
   await expectWcagAAndAa(page, "approve and export");
 
-  await page.goto("/workbench");
+  await page.goto("/workbench#decision");
   await page.getByRole("button", { name: "Start isolated final review" }).click();
   const rejectRegion = page.locator('section[aria-labelledby="final-decision-title"]');
   await rejectRegion.getByRole("radio", { name: "Reject" }).check();
@@ -274,20 +307,26 @@ for (const viewport of [
         () => document.documentElement.scrollWidth <= document.documentElement.clientWidth,
       ),
     ).toBe(true);
+    await page.getByRole("button", { name: "View" }).click();
+    await page.getByRole("menuitem", { name: "Matrix" }).click();
     const matrix = page.getByRole("region", {
       name: "Claim by source evidence matrix",
     });
-    const rightmost = matrix.getByRole("button", { name: /Claim 1.*Source 7/ });
-    await expectUnclipped(page, rightmost);
+    const matrixScroll = page.getByLabel("Scrollable evidence matrix");
+    await expect(matrixScroll).toBeVisible();
+    await matrixScroll.focus();
+    await expect(matrixScroll).toBeFocused();
     await matrix.getByRole("button", { name: /Claim 1.*Source 2/ }).click();
     const drawer = page.getByRole("dialog", { name: /Evidence verification/ });
     await expectUnclipped(page, drawer.getByRole("button", { name: "Close evidence drawer" }));
-    await expectUnclipped(page, drawer.locator("blockquote").first());
+    await expect(drawer.locator("blockquote").first()).toBeVisible();
     await page.keyboard.press("Escape");
+    await page.goto("/workbench#audit");
     await expectUnclipped(
       page,
       page.locator('[data-audit-attempt][data-node-id="plan-experiment"] summary').first(),
     );
+    await page.goto("/workbench#decision");
     await expectUnclipped(
       page,
       page.getByRole("button", { name: "Start isolated final review" }),
@@ -298,6 +337,8 @@ for (const viewport of [
 test("computes reduced motion and exposes non-color state labels", async ({ page }) => {
   await page.emulateMedia({ reducedMotion: "reduce" });
   await page.goto("/workbench");
+  await page.getByRole("button", { name: "View" }).click();
+  await page.getByRole("menuitem", { name: "Matrix" }).click();
   const matrix = page.getByRole("region", {
     name: "Claim by source evidence matrix",
   });

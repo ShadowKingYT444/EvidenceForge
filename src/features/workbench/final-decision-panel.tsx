@@ -241,7 +241,12 @@ export function FinalDecisionPanel({
         <span className={styles.mode}>{modeLabel}</span>
       </div>
 
-      <div className={styles.risks} aria-labelledby="unresolved-risk-title">
+      <div
+        className={styles.risks}
+        role="region"
+        tabIndex={0}
+        aria-labelledby="unresolved-risk-title"
+      >
         <strong id="unresolved-risk-title">
           {risks.length} unresolved {risks.length === 1 ? "risk" : "risks"}
         </strong>

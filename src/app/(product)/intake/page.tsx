@@ -21,6 +21,16 @@ function goldenIntakeDraft(): IntakeDraft {
   };
 }
 
-export default function IntakePage() {
-  return <IntakeScope goldenDraft={goldenIntakeDraft()} />;
+type IntakePageProps = {
+  searchParams: Promise<{ demo?: string | string[] }>;
+};
+
+export default async function IntakePage({ searchParams }: IntakePageProps) {
+  const demo = (await searchParams).demo;
+  return (
+    <IntakeScope
+      goldenDraft={goldenIntakeDraft()}
+      startWithGolden={demo === "golden"}
+    />
+  );
 }

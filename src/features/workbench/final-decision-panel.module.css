@@ -266,3 +266,6 @@
     max-height: none;
   }
 }
+
+.field input, .field textarea, .form fieldset input { border-color: #51545d; background: #111215; color: #f1f1f2; }
+.export { border-color: #51545d; background: #202126; color: #f1f1f2; }
