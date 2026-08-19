@@ -21,6 +21,18 @@ services:
         value: 15
       - key: FEATHERLESS_API_KEY
         sync: false
+      - key: GROQ_API_KEY
+        sync: false
+      - key: NVIDIA_API_KEY
+        sync: false
+      - key: PRIMARY_PROVIDER
+        value: groq
+      - key: PRIMARY_MODEL
+        value: openai/gpt-oss-120b
+      - key: REVIEW_PROVIDER
+        value: nvidia_nim
+      - key: REVIEW_MODEL
+        value: meta/llama-3.1-8b-instruct
       - key: OPENALEX_API_KEY
         sync: false
       - key: CROSSREF_MAILTO

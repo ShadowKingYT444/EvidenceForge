@@ -51,7 +51,7 @@ Automated tests cover these contracts and mocked provider paths. A successful li
 | Workflow | Explicit server-side orchestration with typed failures and human checkpoints |
 | Session state | Private in-memory cache, optimistic revisions, HttpOnly run tokens, inactivity expiry |
 | Scholarly sources | OpenAlex metadata/search, OA PDF locations, optional Unpaywall DOI fallback, researcher paste |
-| Model boundary | Featherless primary/reviewer adapters; model output is untrusted input |
+| Model boundary | Groq GPT-OSS primary, NVIDIA Llama reviewer, optional Featherless adapter; model output is untrusted input |
 | Evidence | Frozen packet hashes, rights decisions, exact passage references, categorical assessments |
 | Verification | Vitest unit/evaluation contracts and Playwright browser journeys |
 
@@ -65,7 +65,7 @@ pnpm install --frozen-lockfile
 pnpm dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) and choose **Start an investigation**. For local live mode, copy [.env.example](.env.example), set `EVIDENCE_MODE=live`, provide `RUN_TOKEN_SECRET`, `FEATHERLESS_API_KEY`, and optionally `OPENALEX_API_KEY`. Never expose credentials through `NEXT_PUBLIC_*` variables or commit them.
+Open [http://localhost:3000](http://localhost:3000) and choose **Start an investigation**. For local live mode, copy [.env.example](.env.example), set `EVIDENCE_MODE=live`, provide `RUN_TOKEN_SECRET`, `GROQ_API_KEY`, `NVIDIA_API_KEY`, and optionally `OPENALEX_API_KEY`. Never expose credentials through `NEXT_PUBLIC_*` variables or commit them.
 
 Hackathon sessions are intentionally ephemeral: they expire after two hours of inactivity by default, and completed runs are removed shortly after the final decision. A server restart also clears the cache.
 

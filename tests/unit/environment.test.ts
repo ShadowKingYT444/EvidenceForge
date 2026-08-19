@@ -34,9 +34,34 @@ describe("readRuntimeEnvironment", () => {
         "PRIMARY_MODEL",
         "REVIEW_PROVIDER",
         "REVIEW_MODEL",
-        "FEATHERLESS_API_KEY",
       ]),
     );
+  });
+
+  it("accepts the verified Groq primary and NVIDIA reviewer pairing", () => {
+    expect(
+      readRuntimeEnvironment({
+        EVIDENCE_MODE: "live",
+        PRIMARY_PROVIDER: "groq",
+        PRIMARY_MODEL: "openai/gpt-oss-120b",
+        GROQ_API_KEY: "test-only-groq-key",
+        REVIEW_PROVIDER: "nvidia_nim",
+        REVIEW_MODEL: "meta/llama-3.1-8b-instruct",
+        NVIDIA_API_KEY: "test-only-nvidia-key",
+      }),
+    ).toEqual({
+      evidenceMode: "live",
+      primary: {
+        provider: "groq",
+        model: "openai/gpt-oss-120b",
+        apiKey: "test-only-groq-key",
+      },
+      reviewer: {
+        provider: "nvidia_nim",
+        model: "meta/llama-3.1-8b-instruct",
+        apiKey: "test-only-nvidia-key",
+      },
+    });
   });
 
   it("returns a validated live configuration without changing model IDs", () => {

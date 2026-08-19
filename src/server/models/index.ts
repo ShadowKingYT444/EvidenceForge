@@ -656,16 +656,20 @@ function requestBody(
     );
     return common;
   }
-  if (request.settings.reasoningMode === "disabled") {
-    common.reasoning_effort = "none";
-  } else if (request.settings.reasoningMode === "enabled") {
-    common.reasoning_effort = "high";
-  }
-  if (
-    request.settings.reasoningMode !== "disabled" &&
-    request.settings.reasoningBudgetTokens !== null
-  ) {
-    common.reasoning_budget = request.settings.reasoningBudgetTokens;
+  const supportsNvidiaReasoningControls =
+    configuration.modelId.toLowerCase().includes("nemotron");
+  if (supportsNvidiaReasoningControls) {
+    if (request.settings.reasoningMode === "disabled") {
+      common.reasoning_effort = "none";
+    } else if (request.settings.reasoningMode === "enabled") {
+      common.reasoning_effort = "high";
+    }
+    if (
+      request.settings.reasoningMode !== "disabled" &&
+      request.settings.reasoningBudgetTokens !== null
+    ) {
+      common.reasoning_budget = request.settings.reasoningBudgetTokens;
+    }
   }
   const jsonInstruction = [
     "Return only one JSON object matching this schema.",

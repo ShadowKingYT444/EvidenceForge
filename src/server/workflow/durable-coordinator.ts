@@ -9,6 +9,8 @@ import {
 import {
   createFeatherlessAdapter,
   createFixtureAdapter,
+  createGroqAdapter,
+  createNvidiaAdapter,
   type StructuredGenerationAdapter,
 } from "../models";
 import { createPromptRunNodeRequestBuilder } from "../prompts/render";
@@ -59,8 +61,19 @@ function liveAdapters(): {
   reviewer: StructuredGenerationAdapter;
   evidenceMode: ResearchRun["evidenceMode"];
 } {
-  const apiKey = process.env.FEATHERLESS_API_KEY?.trim();
-  if (!apiKey) {
+  const primaryProvider = process.env.PRIMARY_PROVIDER?.trim() ||
+    (process.env.GROQ_API_KEY?.trim() ? "groq" : "featherless");
+  const reviewerProvider = process.env.REVIEW_PROVIDER?.trim() ||
+    (process.env.NVIDIA_API_KEY?.trim() ? "nvidia_nim" : "featherless");
+  const keyFor = (provider: string) =>
+    provider === "groq"
+      ? process.env.GROQ_API_KEY?.trim()
+      : provider === "nvidia_nim"
+        ? process.env.NVIDIA_API_KEY?.trim()
+        : process.env.FEATHERLESS_API_KEY?.trim();
+  const primaryKey = keyFor(primaryProvider);
+  const reviewerKey = keyFor(reviewerProvider);
+  if (!primaryKey || !reviewerKey) {
     const unavailable = createFixtureAdapter({
       modelId: "provider-not-configured",
       developerFamily: "fixture",
@@ -69,24 +82,48 @@ function liveAdapters(): {
     });
     return { primary: unavailable, reviewer: unavailable, evidenceMode: "fixture" };
   }
+  const primaryModel = process.env.PRIMARY_MODEL?.trim() ||
+    (primaryProvider === "groq"
+      ? "openai/gpt-oss-120b"
+      : primaryProvider === "nvidia_nim"
+        ? "meta/llama-3.1-8b-instruct"
+        : "mistralai/Mistral-Large-Instruct-2411");
+  const reviewerModel = process.env.REVIEW_MODEL?.trim() ||
+    (reviewerProvider === "groq"
+      ? "openai/gpt-oss-20b"
+      : reviewerProvider === "nvidia_nim"
+        ? "meta/llama-3.3-70b-instruct"
+        : "Qwen/Qwen2.5-72B-Instruct");
+  const createAdapter = (provider: string, apiKey: string, modelId: string) => {
+    if (provider === "groq") {
+      return createGroqAdapter({
+        apiKey,
+        modelId,
+        developerFamily: "openai",
+        baseFamily: "gpt-oss",
+        evidenceMode: "live",
+      });
+    }
+    if (provider === "nvidia_nim") {
+      return createNvidiaAdapter({
+        apiKey,
+        modelId,
+        developerFamily: "meta",
+        baseFamily: "llama",
+        evidenceMode: "live",
+      });
+    }
+    return createFeatherlessAdapter({
+      apiKey,
+      modelId,
+      developerFamily: modelId.toLowerCase().includes("qwen") ? "qwen" : "mistral",
+      baseFamily: modelId.toLowerCase().includes("qwen") ? "qwen" : "mistral",
+      evidenceMode: "live",
+    });
+  };
   return {
-    primary: createFeatherlessAdapter({
-      apiKey,
-      modelId:
-        process.env.PRIMARY_MODEL?.trim() ||
-        "mistralai/Mistral-Large-Instruct-2411",
-      developerFamily: "mistral",
-      baseFamily: "mistral",
-      evidenceMode: "live",
-    }),
-    reviewer: createFeatherlessAdapter({
-      apiKey,
-      modelId:
-        process.env.REVIEW_MODEL?.trim() || "Qwen/Qwen2.5-72B-Instruct",
-      developerFamily: "qwen",
-      baseFamily: "qwen",
-      evidenceMode: "live",
-    }),
+    primary: createAdapter(primaryProvider, primaryKey, primaryModel),
+    reviewer: createAdapter(reviewerProvider, reviewerKey, reviewerModel),
     evidenceMode: "live",
   };
 }

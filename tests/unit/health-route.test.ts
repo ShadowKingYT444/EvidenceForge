@@ -19,7 +19,8 @@ describe("Render health endpoint", () => {
         survivesRestart: false,
       },
       providers: {
-        featherlessConfigured: false,
+        primary: { provider: "featherless", configured: false },
+        reviewer: { provider: "featherless", configured: false },
         openalexConfigured: false,
       },
     });
