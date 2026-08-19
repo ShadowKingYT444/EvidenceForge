@@ -13,7 +13,11 @@ describe("Render health endpoint", () => {
       status: "ok",
       service: "evidenceforge-demo",
       evidenceMode: "fixture",
-      database: { configured: false, ready: false },
+      cache: {
+        scope: "process_local",
+        ttlMinutes: 120,
+        survivesRestart: false,
+      },
       providers: {
         featherlessConfigured: false,
         openalexConfigured: false,

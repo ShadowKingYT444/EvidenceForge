@@ -15,7 +15,7 @@ EvidenceForge is a live researcher workflow for testing a claim against a bounde
 ## What is implemented
 
 - Next.js/React/TypeScript software application with a live researcher workflow.
-- Postgres JSONB aggregate storage with optimistic revisions and restart durability.
+- Private process-local run caching with optimistic revisions and automatic inactivity expiry.
 - Private high-entropy run tokens stored as HMAC digests and delivered through HttpOnly cookies.
 - OpenAlex search, bounded OA PDF retrieval, PDF text extraction, authorized paste/upload paths, and claim-aware chunk ranking.
 - Exact excerpt validation, immutable packet fingerprints, visible execution failures, timeline projection, and canonical JSON export.
@@ -23,6 +23,6 @@ EvidenceForge is a live researcher workflow for testing a claim against a bounde
 
 ## Honest boundary
 
-No successful hosted rehearsal is claimed until the deployed Render service completes the documented live demo and recovery check. Model outputs remain untrusted input. OA metadata is not legal clearance or proof of entailment. Experiment output is a proposed protocol, not an executed measurement. Human actor labels are declared rather than authenticated accounts. EvidenceForge is not a systematic-review service, paywall bypass, arbitrary crawler, or autonomous scientist.
+No successful hosted rehearsal is claimed until the deployed Render service completes the documented live demo. Cached runs intentionally do not survive a restart and expire after inactivity. Model outputs remain untrusted input. OA metadata is not legal clearance or proof of entailment. Experiment output is a proposed protocol, not an executed measurement. Human actor labels are declared rather than authenticated accounts. EvidenceForge is not a systematic-review service, paywall bypass, arbitrary crawler, or autonomous scientist.
 
 The judge rehearsal procedure is documented in [the live demo script](../demo/live-demo-script.md).

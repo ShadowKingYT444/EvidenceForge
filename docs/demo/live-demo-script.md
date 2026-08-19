@@ -59,13 +59,13 @@ Truth label: deterministic checks verify identity and exact text; model assessme
 
 Truth label: no performance number is presented unless it was measured outside this run and explicitly sourced.
 
-### 3:20–4:00 — Export and recovery branch
+### 3:20–4:00 — Export and session boundary
 
 1. Export canonical JSON and show the packet fingerprint, source/chunk hashes, decisions, objections, and execution history.
-2. If time permits, open the private recovery URL in a fresh browser context or restart the service and reload the run.
-3. Confirm the same run and frozen packet return without exposing the token in the clean URL.
+2. Point out the private session badge and two-hour inactivity limit.
+3. Explain that completed runs are discarded shortly after the final decision and a service restart clears all cached research data.
 
-Truth label: recovery is a durability demonstration only; it does not authenticate the named actor.
+Truth label: the cache is a hackathon convenience, not durable research storage or authenticated identity.
 
 ## Recovery branch
 
@@ -81,9 +81,9 @@ If the run cannot complete live, switch to recorded automated-test evidence and 
 ## Rehearsal checklist
 
 - [ ] Render service is on the intended commit and `/api/health` is healthy.
-- [ ] Postgres migration completed on the deployed database.
 - [ ] OpenAlex and model-provider variables are configured server-side.
 - [ ] Run token is private, HttpOnly, Secure, and absent from clean URLs.
+- [ ] Health reports the intended process-local cache TTL and restart boundary.
 - [ ] A fresh run starts without preloaded battery or fixture content.
 - [ ] At least two source candidates can be reviewed with visible provenance and rights state.
 - [ ] A PDF, or authorized paste fallback, produces exact inspectable passages.
@@ -92,7 +92,7 @@ If the run cannot complete live, switch to recorded automated-test evidence and 
 - [ ] Experiment is described as proposed, not executed.
 - [ ] Human decision is recorded with its actor-label caveat.
 - [ ] Canonical export downloads and parses as JSON.
-- [ ] A restart/recovery check is completed, or the missing check is disclosed.
+- [ ] A completed run expires on the documented short retention schedule.
 
 ## Screenshot shot list
 
@@ -107,4 +107,4 @@ If the run cannot complete live, switch to recorded automated-test evidence and 
 9. Proposed experiment with inferential limits.
 10. Adversarial objection disposition and final human decision.
 11. Canonical export confirmation.
-12. Recovery view after a fresh browser context or restart.
+12. Ephemeral-session badge and expiry disclosure.

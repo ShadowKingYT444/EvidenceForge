@@ -83,7 +83,7 @@ describe("public evaluation and submission artifacts", () => {
       "ReverieHacks 2026 Software Development",
       "Exact passage provenance",
       "deterministic verification, model assessment, and human review",
-      "Postgres-backed run durability",
+      "private process-local run caching",
       "A successful live end-to-end rehearsal is not claimed",
       "does not crawl arbitrary URLs, bypass paywalls",
     ]) {

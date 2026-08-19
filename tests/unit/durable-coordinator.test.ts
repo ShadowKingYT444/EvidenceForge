@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { DurableRunCoordinator, RunAccessDeniedError } from "../../src/server/workflow/durable-coordinator";
 import { AsyncWorkflowRunStoreAdapter, InMemoryWorkflowRunStore } from "../../src/server/workflow/store";
@@ -14,14 +14,31 @@ const intake = {
   unansweredClarifications: [],
 };
 
-describe("durable run coordinator", () => {
+describe("private cached run coordinator", () => {
   const priorSecret = process.env.RUN_TOKEN_SECRET;
   afterEach(() => {
+    vi.useRealTimers();
     if (priorSecret === undefined) delete process.env.RUN_TOKEN_SECRET;
     else process.env.RUN_TOKEN_SECRET = priorSecret;
   });
 
-  it("creates and authorizes a private durable investigation", async () => {
+  it("expires private cached runs after inactivity", async () => {
+    vi.useFakeTimers();
+    process.env.RUN_TOKEN_SECRET = "test-run-token-secret";
+    const cache = new AsyncWorkflowRunStoreAdapter(
+      new InMemoryWorkflowRunStore(),
+      { ttlMs: 1_000 },
+    );
+    const coordinator = new DurableRunCoordinator(cache);
+    const created = await coordinator.create(intake);
+
+    vi.advanceTimersByTime(1_001);
+    await expect(
+      coordinator.authorize(created.snapshot.run.id, created.accessToken),
+    ).rejects.toBeInstanceOf(RunAccessDeniedError);
+  });
+
+  it("creates and authorizes a private ephemeral investigation", async () => {
     process.env.RUN_TOKEN_SECRET = "test-run-token-secret";
     const coordinator = new DurableRunCoordinator(
       new AsyncWorkflowRunStoreAdapter(new InMemoryWorkflowRunStore()),

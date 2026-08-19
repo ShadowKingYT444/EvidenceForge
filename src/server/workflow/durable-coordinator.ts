@@ -16,7 +16,6 @@ import {
   createRunToken,
   digestRunToken,
 } from "../auth/run-token";
-import { createProductionPool } from "../db/pool";
 import {
   persistCollectedSources,
   type HumanDecision,
@@ -29,7 +28,6 @@ import {
   type WorkflowRunSnapshot,
   type WorkflowRunStore,
 } from "./store";
-import { PostgresWorkflowRunStore } from "./postgres-store";
 import { RunService } from "./run-api";
 
 export class RunAccessDeniedError extends Error {
@@ -49,7 +47,7 @@ function tokenSecret(): string {
   if (configured) return configured;
   if (
     process.env.NODE_ENV === "production" &&
-    (process.env.DATABASE_URL || process.env.RENDER)
+    process.env.RENDER
   ) {
     throw new Error("RUN_TOKEN_SECRET is required in production");
   }
@@ -238,9 +236,15 @@ export class DurableRunCoordinator {
     accessToken: string,
     decision: { choice: "approve" | "reject"; declaredActor: string; rationale: string },
   ) {
-    return this.mutate(runId, expectedRevision, accessToken, (service) => {
+    const result = await this.mutate(runId, expectedRevision, accessToken, (service) => {
       service.decideFinal({ runId, expectedRevision, decision });
     });
+    const retentionMinutes = Number(process.env.FINAL_RUN_RETENTION_MINUTES ?? 15);
+    this.store.scheduleExpiry?.(
+      runId,
+      Math.max(1, retentionMinutes) * 60 * 1_000,
+    );
+    return result;
   }
 
   async export(runId: string, accessToken: string) {
@@ -342,9 +346,11 @@ type CoordinatorGlobal = typeof globalThis & {
 export function getDurableRunCoordinator(): DurableRunCoordinator {
   const host = globalThis as CoordinatorGlobal;
   if (!host.__evidenceForgeCoordinator) {
-    const store: WorkflowRunStore = process.env.DATABASE_URL
-      ? new PostgresWorkflowRunStore(createProductionPool())
-      : new AsyncWorkflowRunStoreAdapter(new InMemoryWorkflowRunStore());
+    const ttlMinutes = Number(process.env.RUN_CACHE_TTL_MINUTES ?? 120);
+    const store: WorkflowRunStore = new AsyncWorkflowRunStoreAdapter(
+      new InMemoryWorkflowRunStore(),
+      { ttlMs: Math.max(5, ttlMinutes) * 60 * 1_000 },
+    );
     host.__evidenceForgeCoordinator = new DurableRunCoordinator(store);
   }
   return host.__evidenceForgeCoordinator;
