@@ -6,6 +6,8 @@ import {
   PacketFreezeSchema,
   ResearchRunSchema,
   RunErrorSchema,
+  SourceChunkSchema,
+  SourceRecordSchema,
   type NodeExecution,
   type PacketFreeze,
   type ResearchRun,
@@ -431,6 +433,47 @@ export function persistScopeApproval(
     "collecting_sources",
     updatedAt,
   );
+}
+
+/**
+ * Records the researcher-reviewed source set without asking a model to invent
+ * sources. Source and chunk identity remain application-owned and the run does
+ * not reach the packet checkpoint until the complete set validates together.
+ */
+export function persistCollectedSources(
+  runInput: ResearchRun,
+  sourcesInput: ResearchRun["sources"],
+  chunksInput: ResearchRun["chunks"],
+  updatedAt: string,
+): ResearchRun {
+  const run = ResearchRunSchema.parse(structuredClone(runInput));
+  if (run.status !== "collecting_sources") {
+    throw new InvalidTransitionError(run.status, "awaiting_packet_approval");
+  }
+  if (run.packet !== null) {
+    throw new MissingCheckpointError(
+      "packet_freeze",
+      "sources cannot be replaced after packet approval",
+    );
+  }
+  const sources = SourceRecordSchema.array().min(2).max(8).parse(
+    structuredClone(sourcesInput),
+  );
+  const chunks = SourceChunkSchema.array().min(2).max(128).parse(
+    structuredClone(chunksInput),
+  );
+  const sourceIds = new Set(sources.map(({ id }) => id));
+  if (chunks.some(({ sourceId }) => !sourceIds.has(sourceId))) {
+    throw new InvalidExecutionAttemptError(
+      "every collected chunk must reference a collected source",
+    );
+  }
+  const candidate = ResearchRunSchema.parse({
+    ...run,
+    sources,
+    chunks,
+  });
+  return advanceRun(candidate, "awaiting_packet_approval", updatedAt);
 }
 
 export function persistPacketApproval(

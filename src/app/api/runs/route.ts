@@ -1,5 +1,5 @@
-import { handleCreateRun } from "@/server/workflow/run-api";
+import { createLiveRun } from "@/server/workflow/live-http";
 
 export async function POST(request: Request): Promise<Response> {
-  return handleCreateRun(request);
+  return createLiveRun(request);
 }

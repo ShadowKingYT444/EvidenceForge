@@ -20,6 +20,128 @@ export type WorkflowRunSnapshot = {
   objectionDispositions: ObjectionDispositionPlan | null;
 };
 
+/** Private run-cache boundary. Implementations must clone/validate values and
+ * use compare-and-swap semantics on save. */
+export interface WorkflowRunStore {
+  create(runInput: ResearchRun, options?: { accessTokenDigest?: string }): Promise<WorkflowRunSnapshot>;
+  load(runId: string): Promise<WorkflowRunSnapshot | null>;
+  authorize?(runId: string, accessTokenDigest: string): Promise<WorkflowRunSnapshot | null>;
+  save(
+    runInput: ResearchRun,
+    expectedRevision: string,
+    objectionDispositionsInput?: ObjectionDispositionPlan | null,
+  ): Promise<WorkflowRunSnapshot>;
+  saveComposite?(
+    runInput: ResearchRun,
+    expectedRevision: string,
+    objectionDispositionsInput?: ObjectionDispositionPlan | null,
+  ): Promise<WorkflowRunSnapshot>;
+  delete?(runId: string, expectedRevision: string, accessTokenDigest?: string): Promise<void>;
+  getPacketDraft?(runId: string): Promise<unknown | null>;
+  savePacketDraft?(runId: string, expectedRevision: string, draft: unknown): Promise<{ revision: string; draft: unknown }>;
+  scheduleExpiry?(runId: string, delayMs: number): void;
+}
+
+/** Private process-local cache with sliding inactivity expiration. */
+export class AsyncWorkflowRunStoreAdapter implements WorkflowRunStore {
+  readonly #accessTokenDigests = new Map<string, string>();
+  readonly #packetDrafts = new Map<string, unknown>();
+  readonly #lastAccess = new Map<string, number>();
+  readonly #expiryTimers = new Map<string, ReturnType<typeof setTimeout>>();
+  readonly #ttlMs: number;
+
+  constructor(
+    private readonly delegate: InMemoryWorkflowRunStore,
+    options: { ttlMs?: number } = {},
+  ) {
+    this.#ttlMs = options.ttlMs ?? 120 * 60 * 1_000;
+  }
+
+  #remove(runId: string) {
+    try { this.delegate.remove(runId); } catch { /* already absent */ }
+    this.#accessTokenDigests.delete(runId);
+    this.#packetDrafts.delete(runId);
+    this.#lastAccess.delete(runId);
+    const timer = this.#expiryTimers.get(runId);
+    if (timer) clearTimeout(timer);
+    this.#expiryTimers.delete(runId);
+  }
+
+  #sweep(now = Date.now()) {
+    for (const [runId, lastAccess] of this.#lastAccess) {
+      if (now - lastAccess >= this.#ttlMs) this.#remove(runId);
+    }
+  }
+
+  #touch(runId: string) {
+    this.#sweep();
+    this.#lastAccess.set(runId, Date.now());
+  }
+
+  async create(input: ResearchRun, options?: { accessTokenDigest?: string }) {
+    this.#sweep();
+    const snapshot = this.delegate.create(input);
+    if (options?.accessTokenDigest) {
+      this.#accessTokenDigests.set(snapshot.run.id, options.accessTokenDigest);
+    }
+    this.#packetDrafts.set(snapshot.run.id, { sources: [] });
+    this.#touch(snapshot.run.id);
+    return snapshot;
+  }
+  async load(runId: string) {
+    this.#sweep();
+    const snapshot = this.delegate.load(runId);
+    if (snapshot) this.#touch(runId);
+    return snapshot;
+  }
+  async authorize(runId: string, accessTokenDigest: string) {
+    this.#sweep();
+    if (this.#accessTokenDigests.get(runId) !== accessTokenDigest) return null;
+    const snapshot = this.delegate.load(runId);
+    if (snapshot) this.#touch(runId);
+    return snapshot;
+  }
+  async save(input: ResearchRun, revision: string, dispositions?: ObjectionDispositionPlan | null) {
+    const snapshot = this.delegate.save(input, revision, dispositions);
+    this.#touch(input.id);
+    return snapshot;
+  }
+  async saveComposite(input: ResearchRun, revision: string, dispositions?: ObjectionDispositionPlan | null) {
+    const snapshot = this.delegate.saveComposite(input, revision, dispositions);
+    this.#touch(input.id);
+    return snapshot;
+  }
+  async delete(runId: string, expectedRevision: string) {
+    const current = this.delegate.load(runId);
+    if (!current) throw new RunNotFoundError(runId);
+    if (current.revision !== expectedRevision) throw new RevisionConflictError(runId);
+    this.#remove(runId);
+  }
+  async getPacketDraft(runId: string) {
+    this.#sweep();
+    if (this.delegate.load(runId)) this.#touch(runId);
+    return this.#packetDrafts.has(runId)
+      ? structuredClone(this.#packetDrafts.get(runId))
+      : null;
+  }
+  async savePacketDraft(runId: string, expectedRevision: string, draft: unknown) {
+    const current = this.delegate.load(runId);
+    if (!current) throw new RunNotFoundError(runId);
+    if (current.revision !== expectedRevision) throw new RevisionConflictError(runId);
+    this.#packetDrafts.set(runId, structuredClone(draft));
+    this.#touch(runId);
+    return { revision: current.revision, draft: structuredClone(draft) };
+  }
+
+  scheduleExpiry(runId: string, delayMs: number) {
+    const prior = this.#expiryTimers.get(runId);
+    if (prior) clearTimeout(prior);
+    const timer = setTimeout(() => this.#remove(runId), delayMs);
+    timer.unref?.();
+    this.#expiryTimers.set(runId, timer);
+  }
+}
+
 export class DuplicateRunError extends Error {
   constructor(runId: string) {
     super(`Workflow run ${runId} already exists`);
@@ -319,8 +441,60 @@ export class InMemoryWorkflowRunStore {
     return this.#cloneSnapshot(snapshot);
   }
 
+  /** Persists the final result of several already-validated in-memory workflow
+   * mutations performed by one coordinator request. */
+  saveComposite(
+    runInput: ResearchRun,
+    expectedRevision: string,
+    objectionDispositionsInput?: ObjectionDispositionPlan | null,
+  ): WorkflowRunSnapshot {
+    const run = cloneRun(runInput);
+    const stored = this.#records.get(run.id);
+    if (!stored) throw new RunNotFoundError(run.id);
+    if (stored.revision !== expectedRevision) throw new RevisionConflictError(run.id);
+    const objectionDispositions = objectionDispositionsInput === undefined
+      ? stored.objectionDispositions
+      : objectionDispositionsInput === null
+        ? null
+        : ObjectionDispositionPlanSchema.parse(structuredClone(objectionDispositionsInput));
+    assertAppendOnlyHistory(stored.run, run);
+    assertPersistedCheckpoints(stored.run, run);
+    validateExecutionHistory(run);
+    const snapshot = { run, revision: this.#nextRevision(), objectionDispositions };
+    this.#records.set(run.id, snapshot);
+    return this.#cloneSnapshot(snapshot);
+  }
+
   reset(): void {
     this.#records.clear();
+  }
+
+  /**
+   * Hydrates one already-validated snapshot for a short-lived coordinator.
+   * This is intentionally separate from create(): durable records are allowed
+   * to resume at any legal workflow state, while new records are still forced
+   * to begin as empty drafts.
+   */
+  hydrate(snapshotInput: WorkflowRunSnapshot): void {
+    const snapshot: WorkflowRunSnapshot = {
+      run: cloneRun(snapshotInput.run),
+      revision: snapshotInput.revision,
+      objectionDispositions:
+        snapshotInput.objectionDispositions === null
+          ? null
+          : ObjectionDispositionPlanSchema.parse(
+              structuredClone(snapshotInput.objectionDispositions),
+            ),
+    };
+    validateExecutionHistory(snapshot.run);
+    if (this.#records.has(snapshot.run.id)) {
+      throw new DuplicateRunError(snapshot.run.id);
+    }
+    this.#records.set(snapshot.run.id, snapshot);
+  }
+
+  remove(runId: string): void {
+    if (!this.#records.delete(runId)) throw new RunNotFoundError(runId);
   }
 
   #cloneSnapshot(snapshot: WorkflowRunSnapshot): WorkflowRunSnapshot {
