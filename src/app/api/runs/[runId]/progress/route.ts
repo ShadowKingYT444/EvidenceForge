@@ -1,4 +1,4 @@
-import { handleProgressRun } from "@/server/workflow/run-api";
+import { getLiveProgress } from "@/server/workflow/live-http";
 
 type Context = { params: Promise<{ runId: string }> };
 
@@ -6,5 +6,5 @@ export async function GET(
   request: Request,
   context: Context,
 ): Promise<Response> {
-  return handleProgressRun(request, context);
+  return getLiveProgress(request, context);
 }

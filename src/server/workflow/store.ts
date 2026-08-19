@@ -20,6 +20,75 @@ export type WorkflowRunSnapshot = {
   objectionDispositions: ObjectionDispositionPlan | null;
 };
 
+/** Durable persistence boundary. Implementations must clone/validate values and
+ * use compare-and-swap semantics on save. */
+export interface WorkflowRunStore {
+  create(runInput: ResearchRun, options?: { accessTokenDigest?: string }): Promise<WorkflowRunSnapshot>;
+  load(runId: string): Promise<WorkflowRunSnapshot | null>;
+  authorize?(runId: string, accessTokenDigest: string): Promise<WorkflowRunSnapshot | null>;
+  save(
+    runInput: ResearchRun,
+    expectedRevision: string,
+    objectionDispositionsInput?: ObjectionDispositionPlan | null,
+  ): Promise<WorkflowRunSnapshot>;
+  saveComposite?(
+    runInput: ResearchRun,
+    expectedRevision: string,
+    objectionDispositionsInput?: ObjectionDispositionPlan | null,
+  ): Promise<WorkflowRunSnapshot>;
+  delete?(runId: string, expectedRevision: string, accessTokenDigest?: string): Promise<void>;
+  getPacketDraft?(runId: string): Promise<unknown | null>;
+  savePacketDraft?(runId: string, expectedRevision: string, draft: unknown): Promise<{ revision: string; draft: unknown }>;
+}
+
+/** Allows existing synchronous adapters to be supplied to async services. */
+export class AsyncWorkflowRunStoreAdapter implements WorkflowRunStore {
+  readonly #accessTokenDigests = new Map<string, string>();
+  readonly #packetDrafts = new Map<string, unknown>();
+
+  constructor(private readonly delegate: InMemoryWorkflowRunStore) {}
+  async create(input: ResearchRun, options?: { accessTokenDigest?: string }) {
+    const snapshot = this.delegate.create(input);
+    if (options?.accessTokenDigest) {
+      this.#accessTokenDigests.set(snapshot.run.id, options.accessTokenDigest);
+    }
+    this.#packetDrafts.set(snapshot.run.id, { sources: [] });
+    return snapshot;
+  }
+  async load(runId: string) { return this.delegate.load(runId); }
+  async authorize(runId: string, accessTokenDigest: string) {
+    return this.#accessTokenDigests.get(runId) === accessTokenDigest
+      ? this.delegate.load(runId)
+      : null;
+  }
+  async save(input: ResearchRun, revision: string, dispositions?: ObjectionDispositionPlan | null) {
+    return this.delegate.save(input, revision, dispositions);
+  }
+  async saveComposite(input: ResearchRun, revision: string, dispositions?: ObjectionDispositionPlan | null) {
+    return this.delegate.saveComposite(input, revision, dispositions);
+  }
+  async delete(runId: string, expectedRevision: string) {
+    const current = this.delegate.load(runId);
+    if (!current) throw new RunNotFoundError(runId);
+    if (current.revision !== expectedRevision) throw new RevisionConflictError(runId);
+    this.delegate.remove(runId);
+    this.#accessTokenDigests.delete(runId);
+    this.#packetDrafts.delete(runId);
+  }
+  async getPacketDraft(runId: string) {
+    return this.#packetDrafts.has(runId)
+      ? structuredClone(this.#packetDrafts.get(runId))
+      : null;
+  }
+  async savePacketDraft(runId: string, expectedRevision: string, draft: unknown) {
+    const current = this.delegate.load(runId);
+    if (!current) throw new RunNotFoundError(runId);
+    if (current.revision !== expectedRevision) throw new RevisionConflictError(runId);
+    this.#packetDrafts.set(runId, structuredClone(draft));
+    return { revision: current.revision, draft: structuredClone(draft) };
+  }
+}
+
 export class DuplicateRunError extends Error {
   constructor(runId: string) {
     super(`Workflow run ${runId} already exists`);
@@ -319,8 +388,60 @@ export class InMemoryWorkflowRunStore {
     return this.#cloneSnapshot(snapshot);
   }
 
+  /** Persists the final result of several already-validated in-memory workflow
+   * mutations performed by one coordinator request. */
+  saveComposite(
+    runInput: ResearchRun,
+    expectedRevision: string,
+    objectionDispositionsInput?: ObjectionDispositionPlan | null,
+  ): WorkflowRunSnapshot {
+    const run = cloneRun(runInput);
+    const stored = this.#records.get(run.id);
+    if (!stored) throw new RunNotFoundError(run.id);
+    if (stored.revision !== expectedRevision) throw new RevisionConflictError(run.id);
+    const objectionDispositions = objectionDispositionsInput === undefined
+      ? stored.objectionDispositions
+      : objectionDispositionsInput === null
+        ? null
+        : ObjectionDispositionPlanSchema.parse(structuredClone(objectionDispositionsInput));
+    assertAppendOnlyHistory(stored.run, run);
+    assertPersistedCheckpoints(stored.run, run);
+    validateExecutionHistory(run);
+    const snapshot = { run, revision: this.#nextRevision(), objectionDispositions };
+    this.#records.set(run.id, snapshot);
+    return this.#cloneSnapshot(snapshot);
+  }
+
   reset(): void {
     this.#records.clear();
+  }
+
+  /**
+   * Hydrates one already-validated snapshot for a short-lived coordinator.
+   * This is intentionally separate from create(): durable records are allowed
+   * to resume at any legal workflow state, while new records are still forced
+   * to begin as empty drafts.
+   */
+  hydrate(snapshotInput: WorkflowRunSnapshot): void {
+    const snapshot: WorkflowRunSnapshot = {
+      run: cloneRun(snapshotInput.run),
+      revision: snapshotInput.revision,
+      objectionDispositions:
+        snapshotInput.objectionDispositions === null
+          ? null
+          : ObjectionDispositionPlanSchema.parse(
+              structuredClone(snapshotInput.objectionDispositions),
+            ),
+    };
+    validateExecutionHistory(snapshot.run);
+    if (this.#records.has(snapshot.run.id)) {
+      throw new DuplicateRunError(snapshot.run.id);
+    }
+    this.#records.set(snapshot.run.id, snapshot);
+  }
+
+  remove(runId: string): void {
+    if (!this.#records.delete(runId)) throw new RunNotFoundError(runId);
   }
 
   #cloneSnapshot(snapshot: WorkflowRunSnapshot): WorkflowRunSnapshot {

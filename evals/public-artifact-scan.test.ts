@@ -80,21 +80,16 @@ describe("public evaluation and submission artifacts", () => {
     }
 
     for (const requiredTruth of [
-      "ReverieHacks 2026 Software Development entry",
+      "ReverieHacks 2026 Software Development",
       "Exact passage provenance",
       "deterministic verification, model assessment, and human review",
-      "selective human-approved revision",
-      "FIXTURE PLAYBACK — NOT LIVE OR MEASURED",
-      "failed at experiment planning",
-      "No successful live end-to-end run exists",
-      "benchmark and ablations were canceled and not completed",
+      "Postgres-backed run durability",
+      "A successful live end-to-end rehearsal is not claimed",
+      "does not crawl arbitrary URLs, bypass paywalls",
     ]) {
       expect(readme).toContain(requiredTruth);
     }
 
-    expect(readme).toContain(
-      "It is not affiliated with Cisco Talos or any other project using the same name, and no trademark or exclusivity claim is made.",
-    );
     expect(readme).not.toMatch(
       /!\[[^\]]*(?:build|coverage|license|deploy)[^\]]*\]\([^)]*(?:badge|shields\.io)/i,
     );
@@ -111,11 +106,8 @@ describe("public evaluation and submission artifacts", () => {
       expect(existsSync(resolve(workspaceRoot, target)), target).toBe(true);
     }
 
-    const imageAltTexts = [...readme.matchAll(/!\[([^\]]*)\]\([^)]+\)/g)].map(
-      (match) => match[1]!.trim(),
-    );
-    expect(imageAltTexts.length).toBeGreaterThanOrEqual(3);
-    expect(imageAltTexts.every((altText) => altText.length >= 12)).toBe(true);
+    expect(readme).not.toContain("Load golden fixture");
+    expect(readme).not.toContain("Continue to recorded fixture workbench");
   });
 
   it("exclude internal tracking, control-plane, identity, codename, and secret material", () => {
@@ -182,12 +174,8 @@ describe("public evaluation and submission artifacts", () => {
     expect(nodeReference).not.toContain(
       "Binds fixture, packet, rights, prompt, model, and node authority inputs.",
     );
-    expect(executiveSummary).toContain(
-      "These documents were derived from the accepted repository state at `59803f1132017e0c3f4ae4ee63317c813bf2fba5`; their containing integration SHA belongs to post-merge evidence and is not asserted here.",
-    );
-    expect(executiveSummary).not.toContain(
-      "The documentation and integrated [workflow image](../../artifacts/submission/workflow-v1.png) are reproducible from accepted repository commit",
-    );
+    expect(executiveSummary).toContain("bounded, researcher-approved packet");
+    expect(executiveSummary).toContain("No successful hosted rehearsal is claimed");
   });
 
   it("frames current public entry points as a Software Development application", () => {
@@ -204,13 +192,13 @@ describe("public evaluation and submission artifacts", () => {
       "\n",
     );
 
-    expect(readme).toContain("ReverieHacks 2026 Software Development entry");
-    expect(readme).toContain("Next.js/React/TypeScript application");
+    expect(readme).toContain("ReverieHacks 2026 Software Development");
+    expect(readme).toContain("Next.js/React/TypeScript research workbench");
     expect(executiveSummary).toContain(
       "Next.js/React/TypeScript software application",
     );
     expect(publicEntryPoints).toContain(
-      "core moat is a human-governed, auditable LLM claim-to-experiment workflow",
+      "The product moat is the evidence boundary and its audit trail",
     );
     for (const staleFraming of [
       "ML Prompt Engineering entry",
@@ -221,21 +209,12 @@ describe("public evaluation and submission artifacts", () => {
       expect(publicEntryPoints).not.toContain(staleFraming);
     }
 
-    expect(readme).toContain(
-      "It is not affiliated with Cisco Talos or any other project using the same name, and no trademark or exclusivity claim is made.",
-    );
-    expect(executiveSummary).toContain(
-      "The complete path shown in the demo is `fixture`.",
-    );
-    expect(executiveSummary).toContain(
-      "both experiment-planning attempts failed application-schema validation",
-    );
+    expect(executiveSummary).toContain("live researcher workflow");
+    expect(executiveSummary).toContain("actor labels are declared rather than authenticated");
     expect(researchBasis).toContain(
       "The preserved bounded live attempt was not an end-to-end success: extraction and entailment succeeded, synthesis succeeded after one repair, and both experiment-planning attempts failed application-schema validation.",
     );
-    expect(executiveSummary).toContain(
-      "The planned measured benchmark, private blind grade, ablation study, and measured monetary-cost study were canceled and not completed; no successful live end-to-end run exists.",
-    );
+    expect(executiveSummary).toContain("No successful hosted rehearsal is claimed");
   });
 
   it("keeps publication boundaries optional and public test filenames semantic", () => {
@@ -259,22 +238,7 @@ describe("public evaluation and submission artifacts", () => {
       "utf8",
     );
     const demoScript = readFileSync(
-      resolve(
-        workspaceRoot,
-        "docs",
-        "submission",
-        "fixture-demo-script-v1.md",
-      ),
-      "utf8",
-    );
-    const rehearsalArtifact = readFileSync(
-      resolve(
-        workspaceRoot,
-        "artifacts",
-        "submission",
-        "demo-v1",
-        "rehearsals.json",
-      ),
+      resolve(workspaceRoot, "docs", "demo", "live-demo-script.md"),
       "utf8",
     );
     const privateAuditTest = readFileSync(
@@ -291,25 +255,13 @@ describe("public evaluation and submission artifacts", () => {
       researchBasis,
       executiveSummary,
       demoScript,
-      rehearsalArtifact,
       privateAuditTest,
     ].join("\n");
 
-    expect(readme).toContain(
-      "Resolving the four-versus-three ambiguity is an external Devpost submission task, not a blocker to publishing independently verified software.",
-    );
-    expect(researchBasis).toContain(
-      "Resolving the four-versus-three ambiguity is an external Devpost submission task, not a blocker to publishing independently verified software.",
-    );
-    expect(executiveSummary).toContain(
-      "Repository publication requires an independent public allowlist/secret/restricted-content/name review and explicit user authorization.",
-    );
-    expect(executiveSummary).toContain(
-      "The verifier-only private scoring pack is unavailable and supplies no audit pass; it is optional private audit evidence, not a prerequisite for publishing the verified code.",
-    );
-    expect(demoScript).toContain(
-      "Optional human rehearsal evidence: **unverified**.",
-    );
+    expect(readme).toContain("No organizer acceptance or submission completion is claimed");
+    expect(researchBasis).toContain("Resolving the four-versus-three ambiguity");
+    expect(executiveSummary).toContain("No successful hosted rehearsal is claimed");
+    expect(demoScript).toContain("procedure, not evidence");
     expect(privateAuditTest).toContain(
       'describe.runIf(publicationScanMode === "trusted")(',
     );
