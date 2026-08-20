@@ -67,8 +67,8 @@ const workSchema = z
         .object({
           author: z
             .object({
-              id: z.string(),
-              display_name: z.string(),
+              id: z.string().nullable(),
+              display_name: z.string().nullable(),
             })
             .passthrough(),
         })
@@ -80,7 +80,7 @@ const workSchema = z
       .object({
         is_oa: z.boolean(),
         oa_status: z.string().nullable(),
-        any_repository_has_fulltext: z.boolean(),
+        any_repository_has_fulltext: z.boolean().nullable(),
       })
       .passthrough(),
     abstract_inverted_index: z
@@ -252,7 +252,7 @@ export type OpenAlexLogEvent = {
 };
 
 export type OpenAlexDiscoveryDependencies = {
-  apiKey: string;
+  apiKey?: string;
   evidenceMode: OpenAlexEvidenceMode;
   fetch?: (input: string, init?: RequestInit) => Promise<Response>;
   now?: () => Date;
@@ -500,7 +500,11 @@ function readRetry(
 export function normalizeOpenAlexQuery(
   originalQuery: string,
 ): OpenAlexQueryNormalization {
-  const normalizedQuery = originalQuery.normalize("NFC").replace(/\s+/gu, " ").trim();
+  const normalizedQuery = originalQuery
+    .normalize("NFC")
+    .replace(/[?*]+/gu, " ")
+    .replace(/\s+/gu, " ")
+    .trim();
   if (normalizedQuery.length === 0) {
     return {
       status: "invalid",
@@ -640,10 +644,14 @@ function projectCandidate(
     openAlexId,
     openAlexUrl: `https://openalex.org/${openAlexId}`,
     title: work.title,
-    authors: work.authorships.map(({ author }) => ({
-      openAlexId: extractStableId(author.id, OPENALEX_AUTHOR_ID),
-      displayName: author.display_name,
-    })),
+    authors: work.authorships.flatMap(({ author }) =>
+      author.id && author.display_name
+        ? [{
+            openAlexId: extractStableId(author.id, OPENALEX_AUTHOR_ID),
+            displayName: author.display_name,
+          }]
+        : [],
+    ),
     publicationYear: work.publication_year,
     providerDoi: work.doi,
     canonicalDoi,
@@ -658,7 +666,7 @@ function projectCandidate(
       isOpenAccess: work.open_access.is_oa,
       status: work.open_access.oa_status,
       repositoryFullTextReported:
-        work.open_access.any_repository_has_fulltext,
+        work.open_access.any_repository_has_fulltext ?? false,
       primaryLocation: projectLocation(work.primary_location),
       bestLocation: projectLocation(work.best_oa_location),
       rightsAssessment: "not_assessed",
@@ -706,13 +714,9 @@ export function createOpenAlexDiscoveryClient(
   dependencies: OpenAlexDiscoveryDependencies,
 ) {
   const configuration = snapshotPassiveValue(dependencies);
-  if (typeof configuration.apiKey !== "string") {
-    throw new TypeError("retrieval configuration contains unsupported values");
-  }
-  const apiKey = configuration.apiKey.trim();
-  if (apiKey.length === 0) {
-    throw new Error("OpenAlex apiKey is required");
-  }
+  const apiKey = typeof configuration.apiKey === "string"
+    ? configuration.apiKey.trim()
+    : "";
   const evidenceMode = configuration.evidenceMode;
   if (!(["fixture", "mocked", "live"] as const).includes(evidenceMode)) {
     throw new TypeError("retrieval configuration contains unsupported values");
@@ -991,12 +995,11 @@ export function createOpenAlexDiscoveryClient(
 
     for (let pageNumber = 1; pageNumber <= limits.maxPages; pageNumber += 1) {
       const url = new URL(OPENALEX_WORKS_PATH, OPENALEX_API_ORIGIN);
-      url.searchParams.set("api_key", apiKey);
+      if (apiKey) url.searchParams.set("api_key", apiKey);
       url.searchParams.set("cursor", cursor);
       url.searchParams.set("per_page", String(limits.pageSize));
       url.searchParams.set("search", normalizedQuery);
       url.searchParams.set("select", SELECT_FIELDS);
-      url.searchParams.set("sort", "-relevance_score");
 
       const requested = await request(url.toString(), pageNumber, deadlineAt);
       if (requested.kind === "failure") {

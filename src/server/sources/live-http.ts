@@ -14,6 +14,7 @@ import {
   SourceRightsRequestSchema,
 } from "./schemas";
 import { addDraftSource, PacketDraftSchema, removeDraftSource } from "./packet-draft";
+import { AutomaticCollectionRequestSchema, collectAutomaticResearchPacket } from "../research/live-collection";
 
 type Context = { params: Promise<{ runId: string; sourceId?: string }> };
 
@@ -36,12 +37,63 @@ export async function searchRunSources(request: Request, context: Context): Prom
     const query = new URL(request.url).searchParams.get("query") ?? "";
     const parsed = OpenAlexSearchRequestSchema.parse({ query, maxResults: 10 });
     const apiKey = process.env.OPENALEX_API_KEY?.trim();
-    if (!apiKey) throw new Error("Scholarly search is not configured.");
     const result = await searchScholarlyWorks(parsed.query, { apiKey });
     return Response.json(
       { provider: "openalex", query: result.query, candidates: result.candidates },
       { headers: { "cache-control": "private, no-store" } },
     );
+  } catch (error) {
+    return liveRouteError(error);
+  }
+}
+
+export async function autoCollectRunSources(request: Request, context: Context): Promise<Response> {
+  try {
+    const access = await runAccess(request, context);
+    const body = AutomaticCollectionRequestSchema.parse(await json(request));
+    const apiKey = process.env.OPENALEX_API_KEY?.trim();
+    if (access.snapshot.run.status !== "collecting_sources") {
+      throw new Error("Automatic collection requires approved scope and the collecting_sources phase.");
+    }
+    const collected = await collectAutomaticResearchPacket({
+      run: access.snapshot.run,
+      currentDraft: await access.coordinator.getPacketDraft(access.runId, access.token),
+      config: body.config,
+      openAlexApiKey: apiKey ?? "",
+      signal: request.signal,
+    });
+    const saved = await access.coordinator.savePacketDraft(
+      access.runId,
+      body.expectedRevision,
+      access.token,
+      collected.draft,
+    );
+    return Response.json({
+      revision: saved.revision,
+      draft: PacketDraftSchema.parse(saved.draft),
+      collection: {
+        queries: collected.queries,
+        candidatesConsidered: collected.candidatesConsidered,
+        selectedCandidateIds: collected.selectedCandidateIds,
+        skipped: collected.skipped,
+        usableSources: collected.usableSources,
+        targetSources: collected.targetSources,
+        minimumSources: collected.minimumSources,
+        blocked: collected.blocked,
+        durationMs: collected.durationMs,
+        searchWorkers: collected.searchAudits.map(({ itemId, status, durationMs, signal, error, value }) => ({
+          itemId,
+          status,
+          durationMs: durationMs ?? null,
+          signal: signal ?? null,
+          providerStatus: value?.raw.status ?? null,
+          failureCode: value?.raw.failureCode ?? null,
+          error: error instanceof Error ? error.message : null,
+        })),
+        triageWorkers: collected.triageAudits.map(({ itemId, status, durationMs, fallbackUsed, signal, error }) => ({ itemId, status, durationMs: durationMs ?? null, fallbackUsed, signal: signal ?? null, error: error instanceof Error ? error.message : null })),
+        importWorkers: collected.importAudits.map(({ itemId, status, durationMs, signal }) => ({ itemId, status, durationMs: durationMs ?? null, signal: signal ?? null })),
+      },
+    }, { status: collected.blocked ? 206 : 201, headers: { "cache-control": "private, no-store" } });
   } catch (error) {
     return liveRouteError(error);
   }
@@ -56,7 +108,6 @@ export async function importRunOpenAlexSource(request: Request, context: Context
     const access = await runAccess(request, context);
     const body = importBodySchema.parse(await json(request));
     const apiKey = process.env.OPENALEX_API_KEY?.trim();
-    if (!apiKey) throw new Error("OpenAlex import is not configured.");
     if (access.snapshot.run.status !== "collecting_sources") {
       throw new Error("Sources can only be changed during packet collection.");
     }

@@ -24,6 +24,7 @@ export type WorkflowRunSnapshot = {
  * use compare-and-swap semantics on save. */
 export interface WorkflowRunStore {
   create(runInput: ResearchRun, options?: { accessTokenDigest?: string }): Promise<WorkflowRunSnapshot>;
+  importSnapshot?(snapshot: WorkflowRunSnapshot, options?: { accessTokenDigest?: string }): Promise<WorkflowRunSnapshot>;
   load(runId: string): Promise<WorkflowRunSnapshot | null>;
   authorize?(runId: string, accessTokenDigest: string): Promise<WorkflowRunSnapshot | null>;
   save(
@@ -84,6 +85,16 @@ export class AsyncWorkflowRunStoreAdapter implements WorkflowRunStore {
     if (options?.accessTokenDigest) {
       this.#accessTokenDigests.set(snapshot.run.id, options.accessTokenDigest);
     }
+    this.#packetDrafts.set(snapshot.run.id, { sources: [] });
+    this.#touch(snapshot.run.id);
+    return snapshot;
+  }
+  async importSnapshot(snapshotInput: WorkflowRunSnapshot, options?: { accessTokenDigest?: string }) {
+    this.#sweep();
+    this.delegate.hydrate(snapshotInput);
+    const snapshot = this.delegate.load(snapshotInput.run.id);
+    if (!snapshot) throw new RunNotFoundError(snapshotInput.run.id);
+    if (options?.accessTokenDigest) this.#accessTokenDigests.set(snapshot.run.id, options.accessTokenDigest);
     this.#packetDrafts.set(snapshot.run.id, { sources: [] });
     this.#touch(snapshot.run.id);
     return snapshot;

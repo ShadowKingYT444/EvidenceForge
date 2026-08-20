@@ -3,9 +3,9 @@ import { z } from "zod";
 const rightsState = z.enum(["allowed", "denied", "unknown"]);
 
 export const SourceRightsRequestSchema = z.object({
-  mayStore: rightsState.default("allowed"),
-  mayDisplay: rightsState.default("allowed"),
-  maySendToModel: rightsState.default("allowed"),
+  mayStore: rightsState.default("unknown"),
+  mayDisplay: rightsState.default("unknown"),
+  maySendToModel: rightsState.default("unknown"),
   permissionBasis: z.string().trim().min(1).max(1_000).nullable().optional(),
   checkedAt: z.string().datetime({ offset: true }).nullable().optional(),
 }).strict();

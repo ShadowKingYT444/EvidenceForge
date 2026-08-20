@@ -140,3 +140,14 @@ a { color: inherit; }
 .research-experiment-lists ul { padding-left: 1.1rem; color: #746b61; font-size: .67rem; line-height: 1.5; }
 @media (max-width: 42rem) { .research-example-packet, .research-experiment-summary dl, .research-experiment-lists { grid-template-columns: 1fr; } }
 .research-intake, .research-workspace { --ink: #26231f; --ink-soft: #716b63; --paper: #f6f3ed; --line: #d8d1c5; --accent: #bc5d3b; --accent-dark: #8f3e29; }
+.live-epistemic-panel { display: grid; gap: .9rem; }
+.live-epistemic-summary { display: flex; justify-content: space-between; gap: 1rem; padding: .8rem; border: 1px solid #d8cfc2; background: #fffdf9; }
+.live-epistemic-summary strong { font: 400 1.05rem Georgia, serif; }
+.live-epistemic-summary span { color: #8f857a; font: .58rem var(--font-geist-mono), monospace; }
+.live-epistemic-errors { display: grid; gap: .35rem; margin: 0; padding: 0; list-style: none; }
+.live-epistemic-errors li { display: grid; grid-template-columns: 10rem 1fr; gap: .7rem; padding: .55rem .7rem; border-left: 2px solid #a84d3e; background: #f7e8e3; font-size: .65rem; }
+.live-epistemic-errors code { color: #8f3e29; font-size: .55rem; }
+.live-epistemic-actions { display: flex; flex-wrap: wrap; gap: .4rem; }
+.live-epistemic-actions button { display: inline-flex; align-items: center; gap: .35rem; padding: .45rem .55rem; border: 1px solid #d8cfc2; border-radius: .3rem; background: #fffdf9; color: #675f56; font-size: .6rem; cursor: pointer; }
+.live-epistemic-actions button:disabled { cursor: not-allowed; opacity: .45; }
+@media (max-width: 42rem) { .live-epistemic-summary { display: grid; }.live-epistemic-errors li { grid-template-columns: 1fr; } }

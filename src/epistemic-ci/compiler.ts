@@ -131,7 +131,7 @@ function recomputeDerivedStates(graph: EpistemicGraph): void {
 
 /** Return the roots and every directed descendant reachable from them. */
 export function computeImpactClosure(
-  graph: EpistemicGraph,
+  graph: Pick<EpistemicGraph, "edges"> | { edges: readonly { from: string; to: string }[] },
   changedNodeIds: readonly string[],
 ): string[] {
   const seen = new Set(changedNodeIds);

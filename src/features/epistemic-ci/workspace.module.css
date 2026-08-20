@@ -191,6 +191,24 @@
 .failureState button { min-height: 2rem; padding: .35rem .55rem; background: white; color: var(--ci-bad); }
 .centerState { min-height: 100svh; display: grid; place-items: center; padding: 1rem; }
 
+.liveEntry { width: min(100% - 2rem, 78rem); min-height: 100svh; margin: 0 auto; padding: 1.2rem 0 4rem; }
+.liveEntryHeader { min-height: 3.6rem; display: flex; align-items: center; gap: .65rem; border-bottom: 1px solid var(--ci-line); }
+.liveEntryHeader > div { display: grid; gap: .08rem; }
+.liveEntryHeader strong { font-size: .82rem; }
+.liveEntryHeader > div > span { color: var(--ci-muted); font: .58rem var(--font-geist-mono), monospace; letter-spacing: .08em; text-transform: uppercase; }
+.liveEntryGrid { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(20rem, .85fr); gap: clamp(2rem, 7vw, 7rem); align-items: center; min-height: calc(100svh - 8rem); }
+.liveEntryCopy h1 { max-width: 13ch; margin: .8rem 0 1.2rem; font: 400 clamp(2.8rem, 6vw, 5.6rem)/.92 Georgia, serif; letter-spacing: -.065em; }
+.liveEntryCopy > p { max-width: 34rem; color: var(--ci-muted); font-size: .82rem; line-height: 1.65; }
+.liveEntryCopy ul { display: grid; gap: .55rem; margin: 1.5rem 0 0; padding: 0; list-style: none; color: var(--ci-muted); font-size: .67rem; }
+.liveEntryCopy li { display: flex; align-items: center; gap: .5rem; }
+.liveEntryCopy li svg { color: var(--ci-accent); }
+.liveEntryForm { display: grid; gap: .85rem; padding: 1.2rem; border: 1px solid var(--ci-line); border-radius: .5rem; background: rgb(251 249 244 / 95%); box-shadow: 0 22px 55px rgb(73 55 37 / 8%); }
+.liveEntryForm label { display: grid; gap: .35rem; font-size: .65rem; font-weight: 700; }
+.liveEntryForm textarea, .liveEntryForm input { width: 100%; padding: .72rem; border: 1px solid var(--ci-line); border-radius: .32rem; background: #fffdf9; color: var(--ci-ink); font: .72rem/1.45 var(--font-geist-sans), sans-serif; resize: vertical; }
+.liveEntryForm textarea:focus, .liveEntryForm input:focus { border-color: var(--ci-accent); outline: 3px solid rgb(185 87 55 / 14%); }
+.liveEntryForm .primaryButton, .liveEntryForm .textButton { width: 100%; }
+.liveEntryError { margin: 0; padding: .65rem; border: 1px solid #d8aaa1; background: #f8e7e2; color: var(--ci-bad); font-size: .65rem; }
+
 .inspectorBackdrop { position: fixed; inset: 0; z-index: 50; display: flex; justify-content: flex-end; background: rgb(35 29 23 / 38%); }
 .inspector { width: min(31rem, 94vw); height: 100%; overflow-y: auto; background: var(--ci-surface); box-shadow: -18px 0 50px rgb(40 29 17 / 16%); }
 .inspector > header { position: sticky; top: 0; z-index: 1; display: flex; align-items: flex-start; justify-content: space-between; gap: 1rem; padding: 1rem; border-bottom: 1px solid var(--ci-line); background: var(--ci-surface); }
@@ -242,6 +260,10 @@
   .inspectorBackdrop { align-items: flex-end; }
   .inspector { width: 100%; height: min(82svh, 42rem); border-radius: .8rem .8rem 0 0; }
   .workspaceFooter { display: grid; text-align: center; }
+  .liveEntry { width: min(100% - 1rem, 78rem); }
+  .liveEntryGrid { display: block; padding-top: 2rem; }
+  .liveEntryCopy h1 { font-size: 2.8rem; }
+  .liveEntryForm { margin-top: 2rem; }
 }
 
 @media (max-width: 24rem) {

@@ -456,7 +456,7 @@ export function persistCollectedSources(
       "sources cannot be replaced after packet approval",
     );
   }
-  const sources = SourceRecordSchema.array().min(2).max(8).parse(
+  const sources = SourceRecordSchema.array().min(2).max(10).parse(
     structuredClone(sourcesInput),
   );
   const chunks = SourceChunkSchema.array().min(2).max(128).parse(
@@ -604,35 +604,38 @@ export function failRun(
 
 export function assertNodeMayStart(
   runInput: ResearchRun,
-  nodeId: WorkflowNodeId,
+  nodeId: WorkflowNodeId | string,
   objectionDispositions?: ObjectionDispositionPlan | null,
 ): void {
   const run = ResearchRunSchema.parse(structuredClone(runInput));
-  if (!(nodeId in WORKFLOW_NODE_PHASES)) {
+  const registeredNodeId: WorkflowNodeId = nodeId.startsWith("extract-evidence:")
+    ? "extract-evidence"
+    : nodeId as WorkflowNodeId;
+  if (!(registeredNodeId in WORKFLOW_NODE_PHASES)) {
     throw new NodeStartGuardError(String(nodeId), "node ID is not registered");
   }
-  const expectedStatus = WORKFLOW_NODE_PHASES[nodeId];
+  const expectedStatus = WORKFLOW_NODE_PHASES[registeredNodeId];
   if (run.status !== expectedStatus) {
     throw new NodeStartGuardError(
       nodeId,
       `requires ${expectedStatus}, received ${run.status}`,
     );
   }
-  if (nodeId === "collect-sources") {
+  if (registeredNodeId === "collect-sources") {
     try {
       assertApprovedScope(run);
     } catch (error) {
       throw new NodeStartGuardError(nodeId, (error as Error).message);
     }
   }
-  if (PACKET_DEPENDENT_NODES.has(nodeId)) {
+  if (PACKET_DEPENDENT_NODES.has(registeredNodeId)) {
     try {
       assertApprovedPacket(run);
     } catch (error) {
       throw new NodeStartGuardError(nodeId, (error as Error).message);
     }
   }
-  if (nodeId === "revise-experiment") {
+  if (registeredNodeId === "revise-experiment") {
     try {
       assertObjectionDispositions(run, objectionDispositions);
       if (run.revision !== null) {
@@ -1018,6 +1021,12 @@ export function validateWorkflowMutation(
     "awaiting_final_approval->approved": ["finalDecision"],
     "awaiting_final_approval->rejected": ["finalDecision"],
   };
+  const expectedDataFieldsByEdge: Partial<
+    Record<string, readonly (keyof ResearchRun)[]>
+  > = {
+    "collecting_sources->awaiting_packet_approval": ["sources", "chunks"],
+    "planning_experiment->awaiting_final_approval": ["experimentAbstention"],
+  };
   const edge = `${stored.status}->${candidate.status}`;
 
   if (stored.status === candidate.status) {
@@ -1100,6 +1109,7 @@ export function validateWorkflowMutation(
   assertOnlyTopLevelChanges(stored, candidate, [
     "status",
     "updatedAt",
+    ...(expectedDataFieldsByEdge[edge] ?? []),
     ...expectedCheckpoints,
   ]);
 

@@ -66,6 +66,14 @@ describe("OpenAlex query boundary", () => {
     });
   });
 
+  it("removes wildcard punctuation from ordinary research questions", () => {
+    expect(normalizeOpenAlexQuery("Does RAG reduce hallucination? *")).toMatchObject({
+      status: "valid",
+      originalQuery: "Does RAG reduce hallucination? *",
+      normalizedQuery: "Does RAG reduce hallucination",
+    });
+  });
+
   it.each(["", " \t\n ", "ok\u0000secret", "x".repeat(501)])(
     "rejects an empty, control-bearing, or oversized query without fetching: %j",
     async (query) => {
@@ -127,7 +135,7 @@ describe("bounded OpenAlex discovery", () => {
     expect(firstUrl.searchParams.get("search")).toBe(NORMALIZED_QUERY);
     expect(firstUrl.searchParams.get("cursor")).toBe("*");
     expect(firstUrl.searchParams.get("per_page")).toBe("2");
-    expect(firstUrl.searchParams.get("sort")).toBe("-relevance_score");
+    expect(firstUrl.searchParams.get("sort")).toBeNull();
     expect(secondUrl.searchParams.get("cursor")).toBe("next");
   });
 

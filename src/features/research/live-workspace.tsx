@@ -5,8 +5,9 @@
 
 import { type FormEvent, useCallback, useEffect, useState } from "react";
 import Link from "next/link";
-import { AlertTriangle, ArrowLeft, ArrowRight, BookOpen, Check, Download, FileText, LoaderCircle, Plus, RefreshCw, Search, ShieldCheck, Trash2, Upload } from "lucide-react";
+import { AlertTriangle, ArrowLeft, ArrowRight, BookOpen, Check, Download, FileText, LoaderCircle, Plus, RefreshCw, Search, ShieldCheck, Sparkles, Trash2, Upload } from "lucide-react";
 import { StageRail, StatusBadge, TimelineRow } from "./primitives";
+import { LiveEpistemicPanel } from "./live-epistemic-panel";
 
 type JsonRecord = Record<string, any>;
 type WorkspaceState = { run: JsonRecord | null; revision: string; progress: JsonRecord | null; draft: JsonRecord | null; timeline: JsonRecord[]; candidates: JsonRecord[]; loading: boolean; error: string };
@@ -33,6 +34,7 @@ export function LiveWorkspace({ runId }: { runId: string }) {
   const [query, setQuery] = useState("");
   const [paste, setPaste] = useState({ title: "", text: "", permissionBasis: "" });
   const [decision, setDecision] = useState({ choice: "approve", rationale: "", actor: "" });
+  const [collection, setCollection] = useState<JsonRecord | null>(null);
 
   const request = useCallback(async (path: string, init?: RequestInit) => {
     const response = await fetch(`/api/runs/${encodeURIComponent(runId)}${path}`, init);
@@ -82,6 +84,40 @@ export function LiveWorkspace({ runId }: { runId: string }) {
     } catch (error) { await load(); setNotice(error instanceof Error ? error.message : "Analysis stopped before the next checkpoint."); }
   }
 
+  async function autoCollect(expectedRevision = data.revision) {
+    setNotice("Searching, triaging, and importing up to 10 sources…");
+    try {
+      const result = await request("/sources/auto", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          expectedRevision,
+          config: { target: 10, minimum: 5, candidateCap: 30, sourceDeadlineMs: 180_000, perItemTimeoutMs: 20_000, deadlineMs: 300_000, maxConcurrency: 6 },
+        }),
+      });
+      setCollection(result.collection ?? null);
+      await load();
+      setNotice("");
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : "Automatic source collection failed.");
+    }
+  }
+
+  async function approveScopeAndCollect() {
+    setNotice("Approving scope…");
+    try {
+      const approved = await request("/checkpoints", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ checkpoint: "scope", expectedRevision: data.revision, decision: { declaredActor: "Researcher", rationale: "Approved this bounded technical research scope for automatic evidence collection." } }),
+      });
+      setData((current) => ({ ...current, run: approved.run ?? approved, revision: approved.revision ?? current.revision }));
+      await autoCollect(String(approved.revision ?? data.revision));
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : "Scope approval failed.");
+    }
+  }
+
   async function search(event: FormEvent) {
     event.preventDefault(); if (!query.trim()) return; setNotice("Searching OpenAlex");
     try { const body = await request(`/sources/search?query=${encodeURIComponent(query)}`); setData((current) => ({ ...current, candidates: body.candidates ?? [] })); setNotice(""); }
@@ -119,14 +155,16 @@ export function LiveWorkspace({ runId }: { runId: string }) {
     <div className="research-workspace-title"><div><p className="research-kicker">Investigation / {run.id ?? runId}</p><h1>{run.intake?.originalQuestion ?? "Untitled investigation"}</h1><p className="research-workspace-meta">{run.intake?.intendedApplication ?? "Research workspace"}</p></div><span className={`research-workspace-status status-${status}`}>{status.replaceAll("_", " ")}</span></div>
     {notice && <div className="research-notice" role="status"><LoaderCircle size={15} /> {notice}</div>}
 
-    {stageIndex(status) === 0 && <ScopePanel status={status} claims={claims} onApprove={() => checkpoint("scope")} onRun={runModelStages} />}
+    {stageIndex(status) === 0 && <ScopePanel status={status} claims={claims} onApprove={approveScopeAndCollect} onRun={runModelStages} />}
     {stageIndex(status) === 1 && <section className="research-panel"><PanelHeading icon={<BookOpen size={18} />} title="Build the evidence packet" copy="Find open scholarship, inspect selected passages, and freeze an immutable packet." />
+      <div className="research-panel-actions"><button type="button" className="research-button research-button-primary" onClick={() => void autoCollect()} disabled={Boolean(notice) && notice.includes("Searching")}><Sparkles size={15} /> Build packet automatically</button></div>
+      {collection && <div className="research-findings" role="status"><h3>{collection.usableSources ?? 0} of {collection.targetSources ?? 10} sources ready</h3><p>{collection.candidatesConsidered ?? 0} candidates considered · {collection.triageWorkers?.length ?? 0} triage workers · {collection.importWorkers?.length ?? 0} import workers</p><p className="research-muted">{collection.blocked ? `At least ${collection.minimumSources ?? 5} usable sources are required.` : "Review the compact ledger, then freeze the packet with one human decision."}</p></div>}
       <form className="research-source-search" onSubmit={search}><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search scholarly works..." aria-label="Search scholarly works" /><button className="research-button research-button-primary"><Search size={15} /> Search</button></form>
       {data.candidates.length > 0 && <div className="research-candidate-list">{data.candidates.map((candidate, index) => <article className="research-candidate" key={candidate.openAlexId ?? index}><div><strong>{candidate.title ?? "Untitled work"}</strong><p>{candidate.authors?.join(", ") || "Scholarly work"} · {candidate.publicationYear ?? "n.d."} · {candidate.isOpenAccess ? "Open access" : "Metadata only"}</p></div><button type="button" className="research-button research-button-secondary" disabled={!candidate.isOpenAccess} onClick={() => post("/sources/openalex", { openAlexId: candidate.openAlexId, expectedRevision: data.revision, rights: { mayStore: "allowed", mayDisplay: "allowed", maySendToModel: "allowed", permissionBasis: candidate.license ? `Open-access license: ${candidate.license}` : "Researcher reviewed OpenAlex open-access location", checkedAt: new Date().toISOString() } }, "Importing and ranking source passages")}><Plus size={15} /> Add</button></article>)}</div>}
       <form className="research-paste-form" onSubmit={addPaste}><h3>Bring a source you already trust</h3><input required value={paste.title} onChange={(event) => setPaste({ ...paste, title: event.target.value })} placeholder="Source title" /><textarea required value={paste.text} onChange={(event) => setPaste({ ...paste, text: event.target.value })} placeholder="Paste an abstract or relevant excerpt..." rows={4} /><input required value={paste.permissionBasis} onChange={(event) => setPaste({ ...paste, permissionBasis: event.target.value })} placeholder="Permission basis (for example, CC BY or author-provided)" /><button className="research-button research-button-secondary"><FileText size={15} /> Add excerpt</button></form>
       <label className="research-upload"><Upload size={16} /> Upload an authorized PDF<input type="file" accept="application/pdf" onChange={upload} /></label>
       <SourceLedger entries={draftEntries} onRemove={async (id) => { try { await request(`/sources/${encodeURIComponent(id)}`, { method: "DELETE", headers: { "content-type": "application/json" }, body: JSON.stringify({ expectedRevision: data.revision }) }); await load(); } catch (error) { setNotice(error instanceof Error ? error.message : "Could not remove source."); } }} />
-      <div className="research-panel-actions"><button type="button" className="research-button research-button-primary" disabled={usableDraftSources.length < 2} onClick={() => post("/packet", { expectedRevision: data.revision, declaredActor: "Researcher", rationale: "Reviewed source permissions and selected exact passages." }, "Freezing packet and verifying hashes")}>Freeze packet <ShieldCheck size={16} /></button></div>
+      <div className="research-panel-actions"><button type="button" className="research-button research-button-primary" disabled={usableDraftSources.length < 5} onClick={() => post("/packet", { expectedRevision: data.revision, declaredActor: "Researcher", rationale: "Reviewed the automatically selected source permissions, content scopes, and exact passages." }, "Freezing packet and verifying hashes")}>Freeze {usableDraftSources.length} sources <ShieldCheck size={16} /></button></div>
     </section>}
 
     {stageIndex(status) >= 2 && <section className="research-panel"><PanelHeading icon={<ShieldCheck size={18} />} title="Evidence and findings" copy="Every finding remains anchored to a literal passage and separate verification layers." />
@@ -142,6 +180,7 @@ export function LiveWorkspace({ runId }: { runId: string }) {
     </section>}
 
     {stageIndex(status) >= 4 && <DecisionPanel status={status} run={run} decision={decision} setDecision={setDecision} onSave={() => checkpoint("final")} runId={runId} />}
+    {stageIndex(status) >= 2 && <LiveEpistemicPanel runId={runId} />}
     <section className="research-panel research-timeline-panel"><PanelHeading icon={<RefreshCw size={18} />} title="Provenance timeline" copy="A private session record of model work, human checkpoints, failures, and retries." />{data.timeline.length > 0 ? data.timeline.map((event, index) => <TimelineRow key={event.id ?? index} time={event.at ?? "—"} title={event.label ?? "Workflow event"} detail={event.stage} status={index === data.timeline.length - 1 ? "active" : "complete"} />) : <p className="research-muted">Timeline events will appear as the investigation progresses.</p>}</section>
   </div></main>;
 }
