@@ -317,7 +317,7 @@ type FrozenInternal = {
 };
 
 const DEFAULT_LIMITS: SourcePacketLimits = {
-  maxSources: 8,
+  maxSources: 10,
   maxChunks: 128,
   maxContentBytes: 1_000_000,
   maxChunkBytes: 4_000,
@@ -532,7 +532,7 @@ function readLimits(input: Partial<SourcePacketLimits> | undefined) {
       input?.maxSources,
       DEFAULT_LIMITS.maxSources,
       1,
-      8,
+      10,
       "maxSources",
     ),
     maxChunks: boundedInteger(

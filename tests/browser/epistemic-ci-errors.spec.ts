@@ -2,6 +2,7 @@ import { expect, test, type Page } from "@playwright/test";
 
 async function reachReview(page: Page) {
   await page.goto("/");
+  await page.getByRole("button", { name: /Use deterministic battery demo instead/ }).click();
   await page.getByRole("button", { name: "Compile conclusion" }).click();
   await page.getByRole("button", { name: "Test evidence changes" }).click();
   await page.getByRole("button", { name: /Remove drying contradiction/ }).click();
@@ -24,6 +25,7 @@ test("retries a failed demo load", async ({ page }) => {
     });
   });
   await page.goto("/");
+  await page.getByRole("button", { name: /Use deterministic battery demo instead/ }).click();
   await expect(productAlert(page)).toContainText("Fixture projection unavailable.");
   fail = false;
   await page.getByRole("button", { name: "Try again" }).click();
@@ -39,6 +41,7 @@ test("fails closed on an invalid server projection", async ({ page }) => {
     });
   });
   await page.goto("/");
+  await page.getByRole("button", { name: /Use deterministic battery demo instead/ }).click();
   await expect(productAlert(page)).toContainText("Invalid server projection");
   await expect(page.getByText(/did not match the Epistemic CI contract/i)).toBeVisible();
 });

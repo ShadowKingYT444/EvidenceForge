@@ -9,7 +9,7 @@ export const PacketDraftEntrySchema = z.object({
 }).strict();
 
 export const PacketDraftSchema = z.object({
-  sources: z.array(PacketDraftEntrySchema).max(8),
+  sources: z.array(PacketDraftEntrySchema).max(10),
 }).strict().superRefine(({ sources }, context) => {
   const ids = sources.map(({ source }) => source.id);
   if (new Set(ids).size !== ids.length) {

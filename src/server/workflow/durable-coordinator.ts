@@ -2,7 +2,9 @@ import { createHash } from "node:crypto";
 
 import {
   HumanDecisionSchema,
+  NodeExecutionSchema,
   ResearchIntakeSchema,
+  ResearchRunSchema,
   freezePacket,
   type ResearchRun,
 } from "../../contracts";
@@ -13,6 +15,7 @@ import {
   createNvidiaAdapter,
   type StructuredGenerationAdapter,
 } from "../models";
+import { readRuntimeEnvironment } from "../environment";
 import { createPromptRunNodeRequestBuilder } from "../prompts/render";
 import {
   createRunToken,
@@ -20,6 +23,8 @@ import {
 } from "../auth/run-token";
 import {
   persistCollectedSources,
+  advanceRun,
+  appendExecutionAttempt,
   type HumanDecision,
   type ObjectionDispositionPlan,
 } from "./state-machine";
@@ -30,7 +35,8 @@ import {
   type WorkflowRunSnapshot,
   type WorkflowRunStore,
 } from "./store";
-import { RunService } from "./run-api";
+import { materializeEvidenceNodeOutput, RunService } from "./run-api";
+import { extractEvidenceSourcesInParallel, GenerationFailure } from "../research/live-extraction";
 
 export class RunAccessDeniedError extends Error {
   constructor() {
@@ -56,24 +62,13 @@ function tokenSecret(): string {
   return "evidenceforge-local-development-token-secret";
 }
 
-function liveAdapters(): {
+export function configuredResearchAdapters(): {
   primary: StructuredGenerationAdapter;
   reviewer: StructuredGenerationAdapter;
   evidenceMode: ResearchRun["evidenceMode"];
 } {
-  const primaryProvider = process.env.PRIMARY_PROVIDER?.trim() ||
-    (process.env.GROQ_API_KEY?.trim() ? "groq" : "featherless");
-  const reviewerProvider = process.env.REVIEW_PROVIDER?.trim() ||
-    (process.env.NVIDIA_API_KEY?.trim() ? "nvidia_nim" : "featherless");
-  const keyFor = (provider: string) =>
-    provider === "groq"
-      ? process.env.GROQ_API_KEY?.trim()
-      : provider === "nvidia_nim"
-        ? process.env.NVIDIA_API_KEY?.trim()
-        : process.env.FEATHERLESS_API_KEY?.trim();
-  const primaryKey = keyFor(primaryProvider);
-  const reviewerKey = keyFor(reviewerProvider);
-  if (!primaryKey || !reviewerKey) {
+  const environment = readRuntimeEnvironment();
+  if (environment.evidenceMode === "fixture") {
     const unavailable = createFixtureAdapter({
       modelId: "provider-not-configured",
       developerFamily: "fixture",
@@ -82,18 +77,6 @@ function liveAdapters(): {
     });
     return { primary: unavailable, reviewer: unavailable, evidenceMode: "fixture" };
   }
-  const primaryModel = process.env.PRIMARY_MODEL?.trim() ||
-    (primaryProvider === "groq"
-      ? "openai/gpt-oss-120b"
-      : primaryProvider === "nvidia_nim"
-        ? "meta/llama-3.1-8b-instruct"
-        : "mistralai/Mistral-Large-Instruct-2411");
-  const reviewerModel = process.env.REVIEW_MODEL?.trim() ||
-    (reviewerProvider === "groq"
-      ? "openai/gpt-oss-20b"
-      : reviewerProvider === "nvidia_nim"
-        ? "meta/llama-3.3-70b-instruct"
-        : "Qwen/Qwen2.5-72B-Instruct");
   const createAdapter = (provider: string, apiKey: string, modelId: string) => {
     if (provider === "groq") {
       return createGroqAdapter({
@@ -122,8 +105,16 @@ function liveAdapters(): {
     });
   };
   return {
-    primary: createAdapter(primaryProvider, primaryKey, primaryModel),
-    reviewer: createAdapter(reviewerProvider, reviewerKey, reviewerModel),
+    primary: createAdapter(
+      environment.primary.provider,
+      environment.primary.apiKey,
+      environment.primary.model,
+    ),
+    reviewer: createAdapter(
+      environment.reviewer.provider,
+      environment.reviewer.apiKey,
+      environment.reviewer.model,
+    ),
     evidenceMode: "live",
   };
 }
@@ -135,7 +126,7 @@ function timestampAfter(run: ResearchRun): string {
 }
 
 function createEphemeralService(store: InMemoryWorkflowRunStore): RunService {
-  const adapters = liveAdapters();
+  const adapters = configuredResearchAdapters();
   return new RunService({
     store,
     primaryAdapter: adapters.primary,
@@ -151,7 +142,10 @@ function digest(token: string): string {
 }
 
 export class DurableRunCoordinator {
-  constructor(readonly store: WorkflowRunStore) {}
+  constructor(
+    readonly store: WorkflowRunStore,
+    private readonly researchAdapterFactory: typeof configuredResearchAdapters = configuredResearchAdapters,
+  ) {}
 
   async create(intakeInput: unknown) {
     const accessToken = createRunToken();
@@ -164,6 +158,28 @@ export class DurableRunCoordinator {
       accessTokenDigest: digest(accessToken),
     });
     return { snapshot, accessToken };
+  }
+
+  async importSnapshot(snapshotInput: WorkflowRunSnapshot) {
+    if (!this.store.importSnapshot) throw new Error("Recovery import is unavailable.");
+    const accessToken = createRunToken();
+    const sourceRunId = snapshotInput.run.id;
+    const runId = `recovered-${crypto.randomUUID()}`;
+    const run = ResearchRunSchema.parse({
+      ...structuredClone(snapshotInput.run),
+      id: runId,
+      executions: snapshotInput.run.executions.map((execution) => ({
+        ...execution,
+        inputRefs: execution.inputRefs.map((reference) => reference === sourceRunId ? runId : reference),
+        outputRefs: execution.outputRefs.map((reference) => reference === sourceRunId ? runId : reference),
+      })),
+    });
+    const snapshot = await this.store.importSnapshot({
+      run,
+      revision: `recovery-${crypto.randomUUID()}`,
+      objectionDispositions: structuredClone(snapshotInput.objectionDispositions),
+    }, { accessTokenDigest: digest(accessToken) });
+    return { snapshot, accessToken, recoveryUrl: `/runs/${encodeURIComponent(runId)}/access?token=${encodeURIComponent(accessToken)}` };
   }
 
   async authorize(runId: string, accessToken: string) {
@@ -181,9 +197,92 @@ export class DurableRunCoordinator {
   }
 
   async continue(runId: string, expectedRevision: string, accessToken: string) {
+    const prior = await this.authorizedRevision(runId, expectedRevision, accessToken);
+    if (prior.run.evidenceMode === "live" && prior.run.status === "extracting_evidence" && prior.run.sources.length > 1) {
+      return this.continueParallelExtraction(prior);
+    }
     return this.mutate(runId, expectedRevision, accessToken, async (service) => {
       return service.continue({ runId, expectedRevision });
     });
+  }
+
+  private async continueParallelExtraction(prior: WorkflowRunSnapshot): Promise<MutationResult<{ advanced: boolean; failure: null | { code: string; details: string } }>> {
+    const adapters = this.researchAdapterFactory();
+    if (adapters.evidenceMode !== "live") throw new Error("Parallel extraction requires configured live providers.");
+    const pooled = await extractEvidenceSourcesInParallel({
+      run: prior.run,
+      primary: adapters.primary,
+      fallback: adapters.reviewer,
+      config: { target: prior.run.sources.length, minimum: 1, candidateCap: Math.min(30, prior.run.sources.length), sourceDeadlineMs: 180_000, deadlineMs: 300_000, perItemTimeoutMs: 20_000, maxConcurrency: Math.min(6, prior.run.sources.length) },
+    });
+    const workerGenerations = pooled.results.flatMap((audit) => {
+      if (audit.value) return [{ sourceId: audit.itemId, generations: audit.value.generations }];
+      if (audit.error instanceof GenerationFailure) return [{ sourceId: audit.itemId, generations: [audit.error.generation] }];
+      return [];
+    });
+    const cardsBySource = new Map<string, ReturnType<typeof materializeEvidenceNodeOutput>["evidenceCards"]>();
+    for (const worker of workerGenerations) {
+      for (const generation of worker.generations) {
+        if (!generation.ok) continue;
+        const terminal = generation.attempts.at(-1);
+        if (!terminal) continue;
+        try {
+          const output = materializeEvidenceNodeOutput(prior.run, "extract-evidence", generation.value, terminal);
+          cardsBySource.set(worker.sourceId, output.evidenceCards);
+        } catch {
+          // Provider-schema success is not application evidence success. A
+          // source worker that invents IDs or changes a literal excerpt is
+          // excluded; other independently valid workers may still advance.
+        }
+      }
+    }
+    const evidenceCards = [...cardsBySource.entries()]
+      .sort(([left], [right]) => left.localeCompare(right))
+      .flatMap(([, cards]) => cards)
+      .sort((left, right) => left.id.localeCompare(right.id));
+    if (new Set(evidenceCards.map(({ id }) => id)).size !== evidenceCards.length) {
+      throw new Error("Parallel extraction produced duplicate evidence identities.");
+    }
+    let snapshot = prior;
+    const attempts = workerGenerations.flatMap((worker) => {
+      let previousId: string | null = null;
+      let attemptNumber = 0;
+      return worker.generations.flatMap((generation) => {
+        if (generation.ok && !cardsBySource.has(worker.sourceId)) return [];
+        return generation.attempts.map((rawAttempt, index) => {
+        attemptNumber += 1;
+        const finalSuccess = generation.ok && index === generation.attempts.length - 1;
+        const cards = cardsBySource.get(worker.sourceId) ?? [];
+        const normalized = NodeExecutionSchema.parse({
+          ...rawAttempt,
+          attempt: attemptNumber,
+          retryOfExecutionId: previousId,
+          outputRefs: finalSuccess ? cards.map(({ id }) => id) : [],
+        });
+        previousId = normalized.id;
+        return { attempt: normalized, errors: generation.errors.filter((error) => error.executionId === rawAttempt.id) };
+        });
+      });
+    });
+    for (const [index, entry] of attempts.entries()) {
+      let candidate = appendExecutionAttempt(
+        snapshot.run,
+        entry.attempt,
+        entry.errors,
+        timestampAfter(snapshot.run),
+        snapshot.objectionDispositions,
+      );
+      if (index === attempts.length - 1 && evidenceCards.length > 0) {
+        candidate = ResearchRunSchema.parse({ ...candidate, evidenceCards });
+      }
+      snapshot = await this.store.save(candidate, snapshot.revision, snapshot.objectionDispositions);
+    }
+    if (evidenceCards.length === 0 || attempts.length === 0) {
+      return { snapshot, value: { advanced: false, failure: { code: "parallel_extraction_failed", details: "No source worker produced a valid literal evidence card." } } };
+    }
+    const advanced = advanceRun(snapshot.run, "verifying_evidence", timestampAfter(snapshot.run), snapshot.objectionDispositions);
+    snapshot = await this.store.save(advanced, snapshot.revision, snapshot.objectionDispositions);
+    return { snapshot, value: { advanced: true, failure: null } };
   }
 
   async approveScope(
@@ -192,6 +291,7 @@ export class DurableRunCoordinator {
     accessToken: string,
     input: { declaredActor?: string; rationale?: string },
   ) {
+    void input;
     return this.mutate(runId, expectedRevision, accessToken, (service) => {
       const now = new Date().toISOString();
       const decision = HumanDecisionSchema.parse({
@@ -202,8 +302,6 @@ export class DurableRunCoordinator {
         edits: [],
         decidedAt: now,
         unresolvedObjections: [],
-        declaredActor: input.declaredActor?.trim() || "Researcher",
-        rationale: input.rationale?.trim() || "Approved for bounded evidence collection.",
       });
       service.approveScope({ runId, expectedRevision, decision });
     });
@@ -232,6 +330,7 @@ export class DurableRunCoordinator {
     accessToken: string,
     input: { declaredActor?: string; rationale?: string },
   ) {
+    void input;
     return this.mutate(runId, expectedRevision, accessToken, (service, prior) => {
       const decidedAt = timestampAfter(prior.run);
       const decision = HumanDecisionSchema.parse({
@@ -242,8 +341,6 @@ export class DurableRunCoordinator {
         edits: [],
         decidedAt,
         unresolvedObjections: [],
-        declaredActor: input.declaredActor?.trim() || "Researcher",
-        rationale: input.rationale?.trim() || "Approved this bounded source packet for analysis.",
       });
       const packet = freezePacket({
         sourceHashes: prior.run.sources.map(({ contentHash }) => contentHash),

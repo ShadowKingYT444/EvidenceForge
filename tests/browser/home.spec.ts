@@ -5,12 +5,35 @@ import { expect, test } from "@playwright/test";
 const requireFromA11yPlugin = createRequire(require.resolve("eslint-plugin-jsx-a11y/package.json"));
 const axeScriptPath = requireFromA11yPlugin.resolve("axe-core/axe.min.js");
 
-test("opens the Epistemic CI compile workspace on the normal route", async ({ page }) => {
+test("opens live bounded research on the normal route with a deterministic fallback", async ({ page }) => {
   await page.goto("/");
-  await expect(page.getByRole("heading", { level: 1, name: /When evidence changes/ })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Compile conclusion" })).toBeVisible();
-  await expect(page.getByText("Deterministic fixture", { exact: true })).toBeVisible();
-  await expect(page.getByText(/canonical packet remains immutable/i)).toBeVisible();
+  await expect(page.getByRole("heading", { level: 1, name: /Research a real question/ })).toBeVisible();
+  await expect(page.getByRole("button", { name: /Start live research/ })).toBeVisible();
+  await expect(page.getByRole("button", { name: /Use deterministic battery demo instead/ })).toBeVisible();
+  await expect(page.getByText(/Target 10 usable sources/i)).toBeVisible();
+});
+
+test("starts a private live run from the default workspace entry", async ({ page }) => {
+  await page.route("**/api/runs", async (route) => {
+    if (route.request().method() !== "POST") return route.continue();
+    await route.fulfill({
+      status: 201,
+      contentType: "application/json",
+      body: JSON.stringify({ run: { id: "live-browser-run" }, revision: "revision-1" }),
+    });
+  });
+  await page.route("**/api/runs/live-browser-run/continue", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ snapshot: { run: { id: "live-browser-run", status: "awaiting_scope_approval" }, revision: "revision-2" }, advanced: true }),
+    });
+  });
+  await page.goto("/");
+  await page.getByLabel("Research question").fill("Does a sodium-ion battery improve cold-weather storage reliability?");
+  await page.getByLabel("Decision this will inform").fill("Choose a storage chemistry for a remote sensor design.");
+  await page.getByRole("button", { name: /Start live research/ }).click();
+  await expect(page).toHaveURL(/\/runs\/live-browser-run$/);
 });
 
 test("keeps the CI workspace responsive, keyboard-visible, and accessible", async ({ page }, testInfo) => {
@@ -21,7 +44,7 @@ test("keeps the CI workspace responsive, keyboard-visible, and accessible", asyn
     expect(overflow).toBeLessThanOrEqual(1);
     await page.keyboard.press("Tab");
     await expect(page.locator(":focus-visible")).toBeVisible();
-    await page.screenshot({ path: testInfo.outputPath(`epistemic-ci-${viewport.name}.png`), fullPage: true });
+    await page.screenshot({ path: testInfo.outputPath(`live-epistemic-ci-${viewport.name}.png`), fullPage: true });
   }
   await page.emulateMedia({ reducedMotion: "reduce" });
   await page.goto("/");

@@ -1,7 +1,7 @@
 "use client";
 
 import { Activity, GitPullRequest, Hammer, RotateCcw } from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 
 import {
   authorizeReview,
@@ -21,6 +21,7 @@ import { DependencyGraph } from "./dependency-graph";
 import { PerturbMode } from "./perturb-mode";
 import { BusyState, FailureState, shortHash } from "./primitives";
 import { ReviewMode } from "./review-mode";
+import { LiveResearchEntry } from "./live-research-entry";
 import styles from "./workspace.module.css";
 
 type WorkspaceMode = "compile" | "perturb" | "review";
@@ -81,22 +82,6 @@ export function EpistemicCiWorkspace() {
     } finally {
       if (!controller.signal.aborted) setBusyLabel(null);
     }
-  }, []);
-
-  useEffect(() => {
-    const controller = new AbortController();
-    requestController.current = controller;
-    void loadDemo(controller.signal)
-      .then((next) => {
-        if (controller.signal.aborted) return;
-        setDemo(next);
-        setBuild(next.baseBuild);
-      })
-      .catch((caught: unknown) => {
-        if (controller.signal.aborted) return;
-        setError(errorMessage(caught));
-      });
-    return () => controller.abort();
   }, []);
 
   async function compile(nextIds: ChangeId[], label: string) {
@@ -175,6 +160,7 @@ export function EpistemicCiWorkspace() {
   }
 
   if (!demo || !build) {
+    if (!busyLabel && !error) return <LiveResearchEntry onUseDemo={() => void resetDemo()} />;
     return (
       <main className={styles.workspace}>
         <div className={styles.centerState}>

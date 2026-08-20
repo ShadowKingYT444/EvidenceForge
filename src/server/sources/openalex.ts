@@ -5,6 +5,7 @@ export type ScholarlyCandidate = {
   openAlexId: string; title: string | null; canonicalDoi: string | null;
   publicationYear: number | null; authors: string[]; isOpenAccess: boolean;
   landingPageUrl: string | null; pdfUrl: string | null; license: string | null;
+  citationCount: number; hasAbstract: boolean;
 };
 
 function stableId(id: string): string { return id.replace(/^https:\/\/openalex\.org\//u, ""); }
@@ -18,11 +19,13 @@ export function normalizeOpenAlexCandidate(candidate: OpenAlexCandidate): Schola
     isOpenAccess: candidate.openAccessSignal.isOpenAccess,
     landingPageUrl: location?.landingPageUrl ?? null, pdfUrl: null,
     license: location?.licenseSignal ?? null,
+    citationCount: candidate.citations.count,
+    hasAbstract: candidate.abstractSignal.providerReportedAvailable,
   };
 }
 
 export type ScholarlySearchDependencies = {
-  apiKey: string;
+  apiKey?: string;
   fetch?: typeof fetch;
   evidenceMode?: "live" | "mocked" | "fixture";
 };

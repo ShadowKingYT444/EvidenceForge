@@ -24,8 +24,36 @@ describe("source import service", () => {
   });
 
   it("creates a rights-aware pasted source", () => {
-    const result = createPastedSource({ id: "paste-1", title: "Research note", text: "Retrieval reduces hallucination in this experiment.", claims: ["retrieval reduces hallucination"], originalInput: "researcher paste", rights: { permissionBasis: "author-provided" } });
+    const result = createPastedSource({ id: "paste-1", title: "Research note", text: "Retrieval reduces hallucination in this experiment.", claims: ["retrieval reduces hallucination"], originalInput: "researcher paste", rights: { mayStore: "allowed", mayDisplay: "allowed", maySendToModel: "allowed", permissionBasis: "author-provided" } });
     expect(result.source.access.contentScope).toBe("user_excerpt");
     expect(result.chunks[0]?.text).toContain("Retrieval reduces");
+  });
+
+  it("imports a permitted OpenAlex abstract when full text is unavailable", async () => {
+    const fetcher = vi.fn(async () => new Response(JSON.stringify({
+      ...work,
+      best_oa_location: { landing_page_url: "https://publisher.test/work", license: "cc-by" },
+      abstract_inverted_index: {
+        Retrieval: [0],
+        reduces: [1],
+        hallucination: [2],
+        empirically: [3],
+      },
+    }), { status: 200 }));
+    const result = await importOpenAlexWork({
+      openAlexId: "W123",
+      claims: ["retrieval reduces hallucination"],
+      rights: { mayStore: "allowed", mayDisplay: "allowed", maySendToModel: "allowed", permissionBasis: "CC BY abstract" },
+    }, { apiKey: "secret", fetch: fetcher });
+    expect(result.source.access.contentScope).toBe("abstract");
+    expect(result.chunks[0]?.text).toContain("Retrieval reduces hallucination");
+    expect(result.warnings.join(" ")).toMatch(/limited to the OpenAlex abstract/u);
+  });
+
+  it("fails closed when pasted-text rights are not explicit", () => {
+    const result = createPastedSource({ id: "paste-unknown-rights", title: "Uncleared note", text: "Uncleared research text.", claims: ["research text"], originalInput: "researcher paste" });
+    expect(result.source.access.contentScope).toBe("metadata_only");
+    expect(result.chunks).toEqual([]);
+    expect(result.source.rights).toMatchObject({ mayStore: "unknown", mayDisplay: "unknown", maySendToModel: "unknown" });
   });
 });

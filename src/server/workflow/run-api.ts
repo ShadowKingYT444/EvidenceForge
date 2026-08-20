@@ -729,7 +729,7 @@ function incrementTimestamp(after: string): string {
   return new Date(Date.parse(after) + 1).toISOString();
 }
 
-function providerJsonSchema(
+export function providerJsonSchema(
   input: unknown,
   preserveBounds = false,
 ): Record<string, unknown> {
@@ -817,7 +817,7 @@ export function materializeEvidenceNodeOutput(
   terminalAttempt: NodeExecution,
 ): z.output<typeof EvidenceOutputSchema> {
   const attempt = NodeExecutionSchema.parse(terminalAttempt);
-  if (attempt.nodeId !== nodeId) {
+  if (attempt.nodeId !== nodeId && !attempt.nodeId.startsWith(`${nodeId}:`)) {
     throw new InvalidExecutionAttemptError(
       "evidence output and terminal attempt node disagree",
     );
@@ -1582,6 +1582,40 @@ export class RunService {
       nodeId = "clarify-and-decompose";
     }
 
+    if (nodeId === "plan-experiment") {
+      const selectedGap = executionRun.researchGaps.find(({ id }) => id === executionRun.selectedGapId);
+      if (selectedGap && selectedGap.evidenceCardIds.length === 0) {
+        const candidate = ResearchRunSchema.parse({
+          ...snapshot.run,
+          experiment: null,
+          experimentAbstention: {
+            id: `experiment-abstention-${canonicalSha256({ runId: snapshot.run.id, gapId: selectedGap.id, reason: "missing-required-evidence" })}`,
+            reason: "The selected research gap has no verified evidence cards from which to design a responsible experiment.",
+            safetyCategories: ["missing_required_evidence"],
+            qualifiedReviewRequired: true,
+            missingInputs: ["At least one verified evidence card linked to the selected gap"],
+            allowedNextStep: "Add or authorize evidence for this gap, then recompile the research branch.",
+          },
+        });
+        const advanced = advanceRun(
+          candidate,
+          "awaiting_final_approval",
+          incrementTimestamp(candidate.updatedAt),
+          snapshot.objectionDispositions,
+        );
+        snapshot = this.#store.save(
+          advanced,
+          snapshot.revision,
+          snapshot.objectionDispositions,
+        );
+        return ContinueRunResponseSchema.parse({
+          advanced: true,
+          snapshot: snapshotResponse(snapshot),
+          failure: null,
+        });
+      }
+    }
+
     const prior = executionRun.executions
       .filter((execution) => execution.nodeId === nodeId)
       .at(-1);
@@ -1640,7 +1674,10 @@ export class RunService {
           objectionDispositions: snapshot.objectionDispositions,
         }),
       );
-    } catch {
+    } catch (error) {
+      if (!process.env.RENDER) {
+        console.error("EvidenceForge prompt materialization failed", error);
+      }
       throw new RunServiceBlockedError(
         snapshot.run.id,
         snapshot.revision,
@@ -1676,6 +1713,40 @@ export class RunService {
     this.#inFlightRuns.add(snapshot.run.id);
     try {
       let generated = await adapter.generate(request);
+      const terminalError = generated.ok ? undefined : generated.errors.at(-1);
+      const exhaustedStructuredOutput =
+        terminalError?.kind === "invalid_model_json" ||
+        terminalError?.kind === "invalid_model_output";
+      const fallbackEligible =
+        (nodeId === "assess-entailment" || nodeId === "synthesize-conclusions") &&
+        adapter.identity.baseFamily !== this.#reviewerAdapter.identity.baseFamily &&
+        generated.ok === false &&
+        (terminalError?.retryable === true ||
+          terminalError?.details.providerCode === "rate_limit_exceeded" ||
+          exhaustedStructuredOutput);
+      if (fallbackEligible) {
+        const preservedPrimaryErrors = generated.errors.map((error) =>
+          error.details.providerCode === "rate_limit_exceeded" ||
+          error.kind === "invalid_model_json" ||
+          error.kind === "invalid_model_output"
+            ? { ...error, retryable: true }
+            : error,
+        );
+        const fallback = await this.#reviewerAdapter.generate({
+          ...request,
+          outputJsonSchema: providerJsonSchema(
+            z.toJSONSchema(schema),
+            nodeId === "synthesize-conclusions" &&
+              this.#reviewerAdapter.identity.provider !== "groq",
+          ),
+          fixtureKey: `${request.fixtureKey ?? `${snapshot.run.id}:${nodeId}`}:fallback`,
+        });
+        generated = {
+          ...fallback,
+          attempts: [...generated.attempts, ...fallback.attempts],
+          errors: [...preservedPrimaryErrors, ...fallback.errors],
+        };
+      }
       if (generated.attempts.length === 0) {
         throw new InvalidExecutionAttemptError(
           "node adapter returned no terminal attempt",

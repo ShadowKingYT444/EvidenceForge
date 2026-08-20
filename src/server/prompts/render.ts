@@ -140,6 +140,24 @@ function sourcePacket(run: ResearchRun) {
   };
 }
 
+function evidenceSourcePacket(run: ResearchRun) {
+  const chunkIds = new Set(run.evidenceCards.map(({ sourceChunkId }) => sourceChunkId));
+  const chunks = run.chunks.filter(({ id }) => chunkIds.has(id));
+  const sourceIds = new Set(chunks.map(({ sourceId }) => sourceId));
+  return {
+    packet: run.packet,
+    normalizedMetadata: normalizedSourceMetadata(run).filter(({ id }) => sourceIds.has(id)),
+    chunks: chunks.map((chunk) => ({
+      id: chunk.id,
+      sourceId: chunk.sourceId,
+      text: chunk.text,
+      location: chunk.location,
+      contentHash: chunk.contentHash,
+      displayPermission: chunk.displayPermission,
+    })),
+  };
+}
+
 function experimentPlanningPayload(run: ResearchRun) {
   const selectedGap = run.researchGaps.find(
     ({ id }) => id === run.selectedGapId,
@@ -242,7 +260,7 @@ function nodePayload(input: BuilderInput): unknown {
     case "assess-entailment":
       return {
         resolvedScope: resolvedScope(run),
-        ...sourcePacket(run),
+        ...evidenceSourcePacket(run),
         evidenceCards: run.evidenceCards,
       };
     case "synthesize-conclusions":
