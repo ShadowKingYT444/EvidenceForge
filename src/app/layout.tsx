@@ -5,8 +5,8 @@ import type { ReactNode } from "react";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "EvidenceForge",
-  description: "An auditable, human-governed claim-to-experiment workflow.",
+  title: "EvidenceForge · Epistemic CI",
+  description: "Continuous integration for evidence-backed decisions.",
 };
 
 const geistSans = Geist({

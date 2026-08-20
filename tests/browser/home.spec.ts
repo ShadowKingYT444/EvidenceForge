@@ -5,24 +5,27 @@ import { expect, test } from "@playwright/test";
 const requireFromA11yPlugin = createRequire(require.resolve("eslint-plugin-jsx-a11y/package.json"));
 const axeScriptPath = requireFromA11yPlugin.resolve("axe-core/axe.min.js");
 
-test("opens the sparse provider workspace with a truthful fixture escape hatch", async ({ page }) => {
+test("opens the Epistemic CI compile workspace on the normal route", async ({ page }) => {
   await page.goto("/");
-  await expect(page.getByRole("heading", { level: 1, name: "Connect a model provider" })).toBeVisible();
-  await expect(page.getByRole("button", { name: /OpenAI \/ Codex/ })).toBeVisible();
-  await expect(page.getByRole("button", { name: /Featherless/ })).toBeVisible();
-  await expect(page.getByRole("link", { name: /Use recorded fixture/ })).toHaveAttribute("href", "/intake?demo=golden");
+  await expect(page.getByRole("heading", { level: 1, name: /When evidence changes/ })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Compile conclusion" })).toBeVisible();
+  await expect(page.getByText("Deterministic fixture", { exact: true })).toBeVisible();
+  await expect(page.getByText(/canonical packet remains immutable/i)).toBeVisible();
 });
 
-test("keeps onboarding responsive, keyboard-visible, and accessible", async ({ page }, testInfo) => {
-  for (const viewport of [{ width: 1280, height: 720, name: "desktop" }, { width: 390, height: 844, name: "mobile" }, { width: 640, height: 360, name: "compact" }]) {
+test("keeps the CI workspace responsive, keyboard-visible, and accessible", async ({ page }, testInfo) => {
+  for (const viewport of [{ width: 1280, height: 720, name: "desktop" }, { width: 375, height: 812, name: "mobile" }, { width: 640, height: 360, name: "compact" }]) {
     await page.setViewportSize(viewport);
     await page.goto("/");
     const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
     expect(overflow).toBeLessThanOrEqual(1);
     await page.keyboard.press("Tab");
     await expect(page.locator(":focus-visible")).toBeVisible();
-    await page.screenshot({ path: testInfo.outputPath(`provider-onboarding-${viewport.name}.png`), fullPage: true });
+    await page.screenshot({ path: testInfo.outputPath(`epistemic-ci-${viewport.name}.png`), fullPage: true });
   }
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await page.goto("/");
+  expect(await page.evaluate(() => window.matchMedia("(prefers-reduced-motion: reduce)").matches)).toBe(true);
   await page.setViewportSize({ width: 1280, height: 720 });
   await page.goto("/");
   await page.addScriptTag({ path: axeScriptPath });
