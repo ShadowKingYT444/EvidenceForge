@@ -4,7 +4,7 @@ services:
     runtime: node
     plan: free
     region: oregon
-    autoDeployTrigger: "off"
+    autoDeployTrigger: "commit"
     buildCommand: corepack pnpm install --frozen-lockfile && corepack pnpm build
     startCommand: corepack pnpm start
     healthCheckPath: /api/health
