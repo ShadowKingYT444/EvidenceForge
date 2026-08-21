@@ -66,6 +66,7 @@ function tokenSecret(): string {
 export function configuredResearchAdapters(): {
   primary: StructuredGenerationAdapter;
   reviewer: StructuredGenerationAdapter;
+  fallback?: StructuredGenerationAdapter | null;
   evidenceMode: ResearchRun["evidenceMode"];
 } {
   const environment = readRuntimeEnvironment();
@@ -76,7 +77,7 @@ export function configuredResearchAdapters(): {
       baseFamily: "fixture",
       fixtures: {},
     });
-    return { primary: unavailable, reviewer: unavailable, evidenceMode: "fixture" };
+    return { primary: unavailable, reviewer: unavailable, fallback: null, evidenceMode: "fixture" };
   }
   const createAdapter = (provider: string, apiKey: string, modelId: string) => {
     if (provider === "groq") {
@@ -105,17 +106,20 @@ export function configuredResearchAdapters(): {
       evidenceMode: "live",
     });
   };
-  return {
-    primary: createAdapter(
+  const primary = createAdapter(
       environment.primary.provider,
       environment.primary.apiKey,
       environment.primary.model,
-    ),
-    reviewer: createAdapter(
+    );
+  const reviewer = createAdapter(
       environment.reviewer.provider,
       environment.reviewer.apiKey,
       environment.reviewer.model,
-    ),
+    );
+  return {
+    primary,
+    reviewer,
+    fallback: null,
     evidenceMode: "live",
   };
 }

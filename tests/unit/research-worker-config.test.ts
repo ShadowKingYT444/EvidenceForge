@@ -9,7 +9,7 @@ describe("research worker config", () => {
       minimum: 5,
       candidateCap: 30,
       sourceDeadlineMs: 180_000,
-      perItemTimeoutMs: 20_000,
+      perItemTimeoutMs: 45_000,
       deadlineMs: 300_000,
       maxConcurrency: 6,
     });
