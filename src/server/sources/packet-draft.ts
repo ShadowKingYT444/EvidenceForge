@@ -47,6 +47,28 @@ export const VerifiedPassageSchema = z.object({
   }).strict(),
 }).strict();
 
+export const PendingPassageSchema = z.object({
+  id: z.string().min(1),
+  claimId: z.string().min(1),
+  sourceId: z.string().min(1),
+  sourceChunkId: z.string().min(1),
+  sourceTitle: z.string().min(1),
+  excerpt: z.string().min(40).max(1_200),
+  queryId: z.string().min(1),
+  sourceHash: z.string().regex(/^[a-f0-9]{64}$/u),
+  chunkHash: z.string().regex(/^[a-f0-9]{64}$/u),
+}).strict();
+
+export const ProviderFailureSchema = z.object({
+  stage: z.enum(["query_plan", "primary_admission", "review"]),
+  provider: z.string().min(1),
+  code: z.enum(["rate_limited", "timeout", "provider_error", "invalid_output"]),
+  httpStatus: z.number().int().min(100).max(599).nullable(),
+  attempts: z.number().int().positive(),
+  affectedPassages: z.number().int().nonnegative(),
+  retryable: z.boolean(),
+}).strict();
+
 const RejectionCountsSchema = z.object({
   offTopic: z.number().int().nonnegative(),
   noPermittedText: z.number().int().nonnegative(),
@@ -59,10 +81,13 @@ const RejectionCountsSchema = z.object({
 }).strict();
 
 export const PacketVerificationSchema = z.object({
-  status: z.enum(["ready", "shortfall"]),
+  status: z.enum(["ready", "evidence_shortfall", "provider_unavailable"]),
   targetPassages: z.literal(VERIFIED_PASSAGE_TARGET),
   queries: z.array(PlannedResearchQuerySchema).max(10),
   passages: z.array(VerifiedPassageSchema).max(VERIFIED_PASSAGE_TARGET),
+  pendingPassages: z.array(PendingPassageSchema).max(15),
+  providerFailures: z.array(ProviderFailureSchema).max(20),
+  verificationAttempt: z.number().int().positive(),
   claimsCovered: z.array(z.string()),
   claimsMissing: z.array(z.string()),
   roundsCompleted: z.number().int().min(0).max(3),
@@ -82,7 +107,7 @@ export const PacketDraftEntrySchema = z.object({
 }).strict();
 
 export const PacketDraftSchema = z.object({
-  sources: z.array(PacketDraftEntrySchema).max(10),
+  sources: z.array(PacketDraftEntrySchema).max(20),
   verification: PacketVerificationSchema.nullable().default(null),
 }).strict().superRefine(({ sources }, context) => {
   const ids = sources.map(({ source }) => source.id);

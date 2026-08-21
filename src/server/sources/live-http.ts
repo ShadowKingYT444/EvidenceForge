@@ -49,8 +49,11 @@ export async function searchRunSources(request: Request, context: Context): Prom
 }
 
 export async function autoCollectRunSources(request: Request, context: Context): Promise<Response> {
+  const startedAt = Date.now();
+  let observedRunId = "unknown";
   try {
     const access = await runAccess(request, context);
+    observedRunId = access.runId;
     const body = AutomaticCollectionRequestSchema.parse(await json(request));
     const apiKey = process.env.OPENALEX_API_KEY?.trim();
     if (access.snapshot.run.status !== "collecting_sources") {
@@ -70,6 +73,17 @@ export async function autoCollectRunSources(request: Request, context: Context):
       access.token,
       collected.draft,
     );
+    console.info("[evidenceforge.research.collection]", JSON.stringify({
+      runId: access.runId,
+      mode: body.mode,
+      status: collected.status,
+      verifiedPassages: collected.verifiedPassages,
+      pendingPassages: collected.pendingPassages,
+      providerFailures: collected.providerFailures,
+      primaryWorkers: collected.primaryAudits.map(({ itemId, status, fallbackUsed, durationMs, value }) => ({ itemId, status, fallbackUsed, durationMs: durationMs ?? null, provider: value?.provider ?? null })),
+      reviewerWorkers: collected.reviewerAudits.map(({ itemId, status, fallbackUsed, durationMs, value }) => ({ itemId, status, fallbackUsed, durationMs: durationMs ?? null, provider: value?.provider ?? null })),
+      durationMs: Date.now() - startedAt,
+    }));
     return Response.json({
       revision: saved.revision,
       draft: PacketDraftSchema.parse(saved.draft),
@@ -88,6 +102,9 @@ export async function autoCollectRunSources(request: Request, context: Context):
         roundsCompleted: collected.roundsCompleted,
         rejectionCounts: collected.rejectionCounts,
         plannerFallbackUsed: collected.plannerFallbackUsed,
+        status: collected.status,
+        pendingPassages: collected.pendingPassages,
+        providerFailures: collected.providerFailures,
         blocked: collected.blocked,
         durationMs: collected.durationMs,
         searchWorkers: collected.searchAudits.map(({ itemId, status, durationMs, signal, error, value }) => ({
@@ -99,12 +116,17 @@ export async function autoCollectRunSources(request: Request, context: Context):
           failureCode: value?.raw.failureCode ?? null,
           error: error instanceof Error ? error.message : null,
         })),
-        triageWorkers: collected.triageAudits.map(({ itemId, status, durationMs, fallbackUsed, signal, error }) => ({ itemId, status, durationMs: durationMs ?? null, fallbackUsed, signal: signal ?? null, error: error instanceof Error ? error.message : null })),
-        reviewerWorkers: collected.reviewerAudits.map(({ itemId, status, durationMs, fallbackUsed, signal, error }) => ({ itemId, status, durationMs: durationMs ?? null, fallbackUsed, signal: signal ?? null, error: error instanceof Error ? error.message : null })),
+        triageWorkers: collected.triageAudits.map(({ itemId, status, durationMs, fallbackUsed, signal, error, value }) => ({ itemId, status, durationMs: durationMs ?? null, provider: value?.provider ?? null, fallbackUsed: value?.fallbackUsed ?? fallbackUsed, signal: signal ?? null, error: error instanceof Error ? error.message : null })),
+        reviewerWorkers: collected.reviewerAudits.map(({ itemId, status, durationMs, fallbackUsed, signal, error, value }) => ({ itemId, status, durationMs: durationMs ?? null, provider: value?.provider ?? null, fallbackUsed: value?.fallbackUsed ?? fallbackUsed, signal: signal ?? null, error: error instanceof Error ? error.message : null })),
         importWorkers: collected.importAudits.map(({ itemId, status, durationMs, signal }) => ({ itemId, status, durationMs: durationMs ?? null, signal: signal ?? null })),
       },
     }, { status: collected.blocked ? 206 : 201, headers: { "cache-control": "private, no-store" } });
   } catch (error) {
+    console.error("[evidenceforge.research.collection.failed]", JSON.stringify({
+      runId: observedRunId,
+      errorName: error instanceof Error ? error.name : "UnknownError",
+      durationMs: Date.now() - startedAt,
+    }));
     return liveRouteError(error);
   }
 }

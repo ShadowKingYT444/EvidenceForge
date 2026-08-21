@@ -13,15 +13,15 @@ describe("packet draft helpers", () => {
     expect(replaced.sources[0]?.importedAt).toBe("2026-08-18T20:01:00.000Z");
   });
 
-  it("enforces the ten-source ceiling and supports removal", () => {
+  it("enforces the twenty-source draft ceiling and supports removal", () => {
     let draft: unknown = { sources: [] };
-    for (let index = 0; index < 10; index += 1) {
+    for (let index = 0; index < 20; index += 1) {
       const source = { ...entry(0), source: { ...entry(0).source, id: `draft-source-${index}` } };
       draft = addDraftSource(draft, source);
     }
-    expect(PacketDraftSchema.parse(draft).sources).toHaveLength(10);
-    expect(() => addDraftSource(draft, { ...entry(0), source: { ...entry(0).source, id: "eleventh-source" } })).toThrow();
-    expect(removeDraftSource(draft, "draft-source-3").sources).toHaveLength(9);
+    expect(PacketDraftSchema.parse(draft).sources).toHaveLength(20);
+    expect(() => addDraftSource(draft, { ...entry(0), source: { ...entry(0).source, id: "twenty-first-source" } })).toThrow();
+    expect(removeDraftSource(draft, "draft-source-3").sources).toHaveLength(19);
   });
 
   it("rejects malformed entries and duplicate source IDs in a raw draft", () => {

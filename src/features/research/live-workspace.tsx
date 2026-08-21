@@ -119,11 +119,15 @@ export function LiveWorkspace({ runId }: { runId: string }) {
   const draftEntries: JsonRecord[] = data.draft?.sources ?? [];
   const packetVerification: JsonRecord | null = data.draft?.verification ?? null;
   const verifiedPassages: JsonRecord[] = packetVerification?.passages ?? [];
+  const pendingPassages: JsonRecord[] = packetVerification?.pendingPassages ?? [];
   const evidence: JsonRecord[] = run.evidenceCards ?? [];
   const usableDraftSources = draftEntries.filter((entry) => (entry.chunks?.length ?? 0) > 0);
   const verifiedPassageCount = verifiedPassages.length;
   const targetPassages = Number(packetVerification?.targetPassages ?? collection?.targetPassages ?? 10);
   const packetReady = packetVerification?.status === "ready" && verifiedPassageCount === targetPassages && (packetVerification?.claimsMissing?.length ?? 0) === 0;
+  const providerUnavailable = packetVerification?.status === "provider_unavailable";
+  const evidenceShortfall = packetVerification?.status === "evidence_shortfall";
+  const ledgerPassages = providerUnavailable ? pendingPassages : verifiedPassages;
   const packetAudit = packetVerification ?? collection;
 
   useEffect(() => {
@@ -192,8 +196,8 @@ export function LiveWorkspace({ runId }: { runId: string }) {
     }
   }
 
-  async function autoCollect(expectedRevision = data.revision, mode: "initial" | "deeper" = "initial") {
-    setNotice(mode === "deeper" ? "Searching deeper for missing verified passages…" : "Finding and dual-verifying 10 exact passages…");
+  async function autoCollect(expectedRevision = data.revision, mode: "initial" | "deeper" | "retry_verification" = "initial") {
+    setNotice(mode === "retry_verification" ? "Retrying model verification on saved passages…" : mode === "deeper" ? "Searching deeper for missing verified passages…" : "Finding and dual-verifying 10 exact passages…");
     try {
       const result = await request("/sources/auto", {
         method: "POST",
@@ -320,14 +324,15 @@ export function LiveWorkspace({ runId }: { runId: string }) {
               <div className="research-source-progress">
                 <div><span>Verified passages</span><strong>{verifiedPassageCount}<small> / {targetPassages}</small></strong></div>
                 <div className="research-progress-track" role="progressbar" aria-label="Dual-model verified passages" aria-valuemin={0} aria-valuemax={targetPassages} aria-valuenow={verifiedPassageCount}><i style={{ width: `${passageProgress}%` }} /></div>
-                <p>{packetReady ? "Ten literal passages passed deterministic checks and both model judges." : verifiedPassageCount > 0 ? `${targetPassages - verifiedPassageCount} passage${targetPassages - verifiedPassageCount === 1 ? "" : "s"} still missing. The packet stays blocked instead of padding with weak sources.` : "EvidenceForge will reject generic, cross-domain, and unverifiable matches."}</p>
-                {packetAudit?.rejectionCounts ? <p className="research-muted">Rejected: {packetAudit.rejectionCounts.offTopic ?? 0} off-topic · {packetAudit.rejectionCounts.rightsIneligible ?? 0} rights · {packetAudit.rejectionCounts.primaryRejected ?? 0} primary · {packetAudit.rejectionCounts.reviewerRejected ?? 0} reviewer{packetAudit.rejectionCounts.providerFailure ? ` · ${packetAudit.rejectionCounts.providerFailure} provider failure` : ""}</p> : null}
+                <p>{packetReady ? "Ten literal passages passed deterministic checks and both model judges." : providerUnavailable ? `${pendingPassages.length} passage${pendingPassages.length === 1 ? " is" : "s are"} saved and awaiting model verification. Retrieval will not be repeated.` : evidenceShortfall ? `${verifiedPassageCount} of ${targetPassages} passages passed both model judges. Search deeper or add a trusted source; weak matches were not padded into the packet.` : "EvidenceForge will reject generic, cross-domain, and unverifiable matches."}</p>
+                {packetAudit?.rejectionCounts ? <p className="research-muted">Rejected: {packetAudit.rejectionCounts.offTopic ?? 0} off-topic · {packetAudit.rejectionCounts.rightsIneligible ?? 0} rights · {packetAudit.rejectionCounts.primaryRejected ?? 0} primary · {packetAudit.rejectionCounts.reviewerRejected ?? 0} reviewer</p> : null}
+                {providerUnavailable ? <p className="research-muted">Provider unavailable: {(packetVerification?.providerFailures ?? []).map((failure: JsonRecord) => `${failure.provider} ${String(failure.code).replaceAll("_", " ")} (${failure.affectedPassages} awaiting)`).join(" · ")}</p> : null}
               </div>
               <div className="research-panel-actions research-source-actions">
-                <button type="button" className="research-button research-button-primary" onClick={() => void autoCollect(data.revision, verifiedPassageCount > 0 && !packetReady ? "deeper" : "initial")} disabled={notice.includes("passages")}><Sparkles size={15} /> {verifiedPassageCount > 0 && !packetReady ? "Search deeper" : "Build 10 verified passages"}</button>
+                <button type="button" className="research-button research-button-primary" onClick={() => void autoCollect(data.revision, providerUnavailable ? "retry_verification" : evidenceShortfall ? "deeper" : "initial")} disabled={notice.includes("passages")}><Sparkles size={15} /> {providerUnavailable ? "Retry verification" : evidenceShortfall ? "Search deeper" : "Build 10 verified passages"}</button>
                 <button type="button" className="research-button research-button-secondary" onClick={(event) => openDrawer("add-source", event.currentTarget)}><Plus size={15} /> Add a source</button>
               </div>
-              <SourceLedger entries={draftEntries} passages={verifiedPassages} claims={claims} onRemove={async (id) => {
+              <SourceLedger entries={draftEntries} passages={ledgerPassages} claims={claims} pending={providerUnavailable} onRemove={async (id) => {
                 try {
                   await request(`/sources/${encodeURIComponent(id)}`, { method: "DELETE", headers: { "content-type": "application/json" }, body: JSON.stringify({ expectedRevision: data.revision }) });
                   await load();
@@ -402,9 +407,9 @@ function ScopePanel({ status, claims, onApprove, onRun }: { status: string; clai
   return <section className="research-panel research-focused-panel"><PanelHeading icon={<ShieldCheck size={18} />} kicker="Human checkpoint" title="Approve the claim boundary" /><div className="research-claim-list">{claims.map((claim, index) => <details className="research-claim-card" key={claim.id ?? index}><summary><span>Claim {String(index + 1).padStart(2, "0")}</span><h3>{claim.statement}</h3></summary><p>{claim.operationalDefinition}</p><StatusBadge status="needs-review">Needs review</StatusBadge></details>)}</div>{claims.length === 0 ? <div className="research-state-card"><FileText size={19} /><h3>No claims yet</h3><p>Shape the question into a testable contract.</p></div> : null}<div className="research-panel-actions">{status === "awaiting_scope_approval" ? <button type="button" className="research-button research-button-primary" onClick={onApprove}>Approve and collect sources <ArrowRight size={16} /></button> : <button type="button" className="research-button research-button-primary" onClick={onRun}>Shape claims <ArrowRight size={16} /></button>}</div></section>;
 }
 
-function SourceLedger({ entries, passages, claims, onRemove }: { entries: JsonRecord[]; passages: JsonRecord[]; claims: JsonRecord[]; onRemove: (id: string) => Promise<void> }) {
+function SourceLedger({ entries, passages, claims, pending, onRemove }: { entries: JsonRecord[]; passages: JsonRecord[]; claims: JsonRecord[]; pending: boolean; onRemove: (id: string) => Promise<void> }) {
   const claimNumber = new Map(claims.map((claim, index) => [claim.id, index + 1]));
-  return <div className="research-source-ledger"><div className="research-ledger-header"><h3>Packet ledger</h3><span>{entries.length} sources · {passages.length} verified</span></div>{entries.length > 0 ? entries.map((entry, index) => { const source = entry.source ?? {}; const sourcePassages = passages.filter((passage) => passage.sourceId === source.id); const preview = sourcePassages[0]?.excerpt; const claimLabels = [...new Set(sourcePassages.map((passage) => claimNumber.get(passage.subclaimId)).filter(Boolean))].map((number) => `Claim ${number}`).join(", "); return <div className="research-source-row" key={source.id ?? index}><span className="research-source-index">{String(index + 1).padStart(2, "0")}</span><div><strong>{source.bibliographicMetadata?.title ?? "Untitled source"}</strong><p>{sourcePassages.length} dual-verified · {claimLabels || "Claim pending"}{preview ? ` · “${String(preview).slice(0, 110)}${String(preview).length > 110 ? "…" : ""}”` : ""}</p></div><button type="button" className="research-icon-button" aria-label={`Remove ${source.bibliographicMetadata?.title ?? "source"}`} onClick={() => void onRemove(source.id)}><Trash2 size={15} /></button></div>; }) : <div className="research-ledger-empty"><BookOpen size={18} /><p>No verified passages yet. Build the packet automatically.</p></div>}</div>;
+  return <div className="research-source-ledger"><div className="research-ledger-header"><h3>Packet ledger</h3><span>{entries.length} sources · {passages.length} {pending ? "awaiting verification" : "verified"}</span></div>{entries.length > 0 ? entries.map((entry, index) => { const source = entry.source ?? {}; const sourcePassages = passages.filter((passage) => passage.sourceId === source.id); const preview = sourcePassages[0]?.excerpt; const claimLabels = [...new Set(sourcePassages.map((passage) => claimNumber.get(passage.subclaimId ?? passage.claimId)).filter(Boolean))].map((number) => `Claim ${number}`).join(", "); return <div className="research-source-row" key={source.id ?? index}><span className="research-source-index">{String(index + 1).padStart(2, "0")}</span><div><strong>{source.bibliographicMetadata?.title ?? "Untitled source"}</strong><p>{sourcePassages.length} {pending ? "awaiting verification" : "dual-verified"} · {claimLabels || "Claim pending"}{preview ? ` · “${String(preview).slice(0, 110)}${String(preview).length > 110 ? "…" : ""}”` : ""}</p></div><button type="button" className="research-icon-button" aria-label={`Remove ${source.bibliographicMetadata?.title ?? "source"}`} onClick={() => void onRemove(source.id)}><Trash2 size={15} /></button></div>; }) : <div className="research-ledger-empty"><BookOpen size={18} /><p>No verified passages yet. Build the packet automatically.</p></div>}</div>;
 }
 
 function ContextSummary({ run, runId, status, sourceCount }: { run: JsonRecord; runId: string; status: string; sourceCount: number }) {
