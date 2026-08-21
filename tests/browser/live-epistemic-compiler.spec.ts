@@ -33,6 +33,7 @@ test("projects, perturbs, and reviews a live run through Epistemic CI", async ({
   await page.route(`**/api/runs/${runId}/epistemic/review`, async (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ receipt: { evidenceUpdateStatus: "merged_with_blockers", receiptHash: hash }, scientificDecisionApproved: false }) }));
 
   await page.goto(`/runs/${runId}`);
+  await page.getByRole("button", { name: "Activity" }).click();
   await page.getByRole("button", { name: "Project live dependency graph" }).click();
   await page.getByRole("button", { name: "Compile live run" }).click();
   await expect(page.getByText("Live research branch blocked", { exact: true })).toBeVisible();

@@ -598,7 +598,7 @@ function expectedOpenAlexResult(): OpenAlexDiscoveryResult {
     normalizedQuery: MATCHING_TITLE,
     completedAt: CHECKED_AT,
     snapshotId:
-      "oa-snapshot-8849661ccd523d8cae238f5ed13b67679f1facebb9218a6e46183549179645a4",
+      "oa-snapshot-110a3173373ceebf0464b02ed5e79a34839eb3019ac1430ab32664c627dc8585",
     candidates: [
       {
         openAlexId: "W2500000001",
@@ -611,6 +611,7 @@ function expectedOpenAlexResult(): OpenAlexDiscoveryResult {
           },
         ],
         publicationYear: 2026,
+        providerRelevanceScore: null,
         providerDoi: `https://doi.org/${MATCHING_DOI}`,
         canonicalDoi: MATCHING_DOI,
         source: {
@@ -619,7 +620,8 @@ function expectedOpenAlexResult(): OpenAlexDiscoveryResult {
         },
         abstractSignal: {
           providerReportedAvailable: true,
-          contentFetched: false,
+          contentFetched: true,
+          text: "Project authored",
         },
         openAccessSignal: {
           isOpenAccess: true,

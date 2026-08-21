@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowRight, FlaskConical, LoaderCircle, ShieldCheck } from "lucide-react";
+import { ArrowRight, LoaderCircle, Play, Sparkles } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { type FormEvent, useState } from "react";
 
@@ -71,34 +71,50 @@ export function LiveResearchEntry({ onUseDemo }: { onUseDemo: () => void }) {
   }
 
   const busy = state === "creating" || state === "decomposing";
+
   return (
     <main className={styles.workspace}>
       <section className={styles.liveEntry}>
         <header className={styles.liveEntryHeader}>
-          <span className={styles.brandMark} aria-hidden="true"><i /><i /><i /></span>
-          <div><strong>EvidenceForge</strong><span>Live Epistemic CI</span></div>
+          <div className={styles.liveEntryBrand}>
+            <span className={styles.brandMark} aria-hidden="true"><i /><i /><i /></span>
+            <div><strong>EvidenceForge</strong><span>Epistemic CI</span></div>
+          </div>
+          <button className={styles.demoLink} type="button" disabled={busy} onClick={onUseDemo}>
+            <Play aria-hidden="true" size={13} /> Try the demo
+          </button>
         </header>
+
         <div className={styles.liveEntryGrid}>
           <div className={styles.liveEntryCopy}>
-            <span className={styles.eyebrow}>Continuous integration for evidence-backed decisions</span>
-            <h1>Research a real question. Then test what its conclusion depends on.</h1>
-            <p>EvidenceForge decomposes the question, automatically triages open scholarship, builds an immutable packet, and compiles every downstream dependency.</p>
-            <ul>
-              <li><FlaskConical aria-hidden="true" size={15} /> Target 10 usable sources in three minutes</li>
-              <li><ShieldCheck aria-hidden="true" size={15} /> One human packet-freeze checkpoint</li>
-              <li><ArrowRight aria-hidden="true" size={15} /> Generic evidence, scope, and assumption branches</li>
-            </ul>
+            <span className={styles.eyebrow}><Sparkles aria-hidden="true" size={13} /> Evidence, compiled</span>
+            <h1>What should we test?</h1>
+            <p>Turn a real question into an evidence-bound decision.</p>
           </div>
+
           <form className={styles.liveEntryForm} onSubmit={submit}>
-            <label>Research question<textarea required rows={4} value={question} onChange={(event) => setQuestion(event.target.value)} placeholder="What technical or scientific hypothesis should we test?" /></label>
-            <label>Decision this will inform<textarea required rows={2} value={application} onChange={(event) => setApplication(event.target.value)} placeholder="What product, design, or research decision depends on the answer?" /></label>
-            <label>Optional boundaries<input value={constraints} onChange={(event) => setConstraints(event.target.value)} placeholder="Population, system, date range, exclusions…" /></label>
+            <div className={styles.formMeta}><span>New investigation</span><span><i /> Private session</span></div>
+            <label className={styles.questionField}>
+              Research question
+              <textarea required rows={4} value={question} onChange={(event) => setQuestion(event.target.value)} placeholder="Can retrieval prevent reward hacking in sparse-data evaluation?" />
+            </label>
+            <label>
+              Decision this will inform
+              <textarea required rows={2} value={application} onChange={(event) => setApplication(event.target.value)} placeholder="Choose an evaluation or system design" />
+            </label>
+            <details className={styles.boundaryDisclosure}>
+              <summary>Add boundaries <span>Optional</span></summary>
+              <label>
+                Scope boundaries
+                <input value={constraints} onChange={(event) => setConstraints(event.target.value)} placeholder="Population, system, date range, exclusions…" />
+              </label>
+            </details>
             {state === "error" ? <p className={styles.liveEntryError} role="alert">{error}</p> : null}
             <button className={styles.primaryButton} type="submit" disabled={busy || !question.trim() || !application.trim()}>
-              {busy ? <><LoaderCircle aria-hidden="true" size={16} /> {state === "creating" ? "Creating private run…" : "Decomposing claims…"}</> : <>Start live research <ArrowRight aria-hidden="true" size={16} /></>}
+              {busy ? <><LoaderCircle aria-hidden="true" size={16} /> {state === "creating" ? "Creating private run…" : "Shaping claims…"}</> : <>Start research <ArrowRight aria-hidden="true" size={16} /></>}
             </button>
-            <button className={styles.textButton} type="button" disabled={busy} onClick={onUseDemo}>Use deterministic battery demo instead</button>
           </form>
+          <div className={styles.liveEntrySignal} aria-hidden="true"><i /><i /><i /><span /></div>
         </div>
       </section>
     </main>

@@ -1,11 +1,14 @@
 import { candidateIdentity, dedupeCandidates } from "./dedupe";
 import type { EvidenceCandidate, RankedCandidate } from "./types";
 
+const STOP_WORDS = new Set(["a", "an", "and", "are", "as", "at", "be", "by", "for", "from", "in", "is", "of", "on", "or", "the", "to", "with"]);
+
 function lexicalOverlap(candidate: EvidenceCandidate): number {
   if (!candidate.query) return 0;
-  const queryTerms = new Set(candidate.query.toLocaleLowerCase("en-US").split(/\W+/).filter(Boolean));
+  const queryTerms = new Set(candidate.query.toLocaleLowerCase("en-US").split(/\W+/).filter((term) => term.length > 1 && !STOP_WORDS.has(term)));
+  if (queryTerms.size === 0) return 0;
   const text = `${candidate.title ?? ""} ${candidate.abstract ?? ""}`.toLocaleLowerCase("en-US");
-  return [...queryTerms].filter((term) => text.includes(term)).length;
+  return [...queryTerms].filter((term) => text.includes(term)).length / queryTerms.size;
 }
 
 function stableHash(value: string): number {
@@ -22,9 +25,9 @@ export function preRankCandidates(candidates: readonly EvidenceCandidate[]): Ran
   const unique = dedupeCandidates(candidates);
   return unique
     .map((candidate, originalIndex) => {
-      const providerScore = Number.isFinite(candidate.score) ? candidate.score! : 0;
+      const providerScore = Number.isFinite(candidate.score) ? Math.max(0, Math.min(1, candidate.score!)) : 0;
       const rankBoost = Number.isFinite(candidate.rank) ? Math.max(0, 10_000 - candidate.rank!) / 10_000 : 0;
-      const deterministicScore = providerScore + rankBoost + lexicalOverlap(candidate) * 0.001 + stableHash(candidateIdentity(candidate)) * 0.000001;
+      const deterministicScore = providerScore * 0.65 + rankBoost * 0.2 + lexicalOverlap(candidate) * 0.15 + stableHash(candidateIdentity(candidate)) * 0.000001;
       return { ...candidate, deterministicScore, originalIndex };
     })
     .sort((left, right) => {

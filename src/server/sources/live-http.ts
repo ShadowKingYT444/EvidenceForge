@@ -1,6 +1,7 @@
 import * as unpdf from "unpdf";
 import { z } from "zod";
 
+import { canonicalSha256 } from "../../contracts";
 import { extractRunToken } from "../auth/run-token";
 import { getDurableRunCoordinator, RunAccessDeniedError } from "../workflow/durable-coordinator";
 import { liveRouteError } from "../workflow/live-http";
@@ -58,6 +59,7 @@ export async function autoCollectRunSources(request: Request, context: Context):
     const collected = await collectAutomaticResearchPacket({
       run: access.snapshot.run,
       currentDraft: await access.coordinator.getPacketDraft(access.runId, access.token),
+      mode: body.mode,
       config: body.config,
       openAlexApiKey: apiKey ?? "",
       signal: request.signal,
@@ -79,6 +81,13 @@ export async function autoCollectRunSources(request: Request, context: Context):
         usableSources: collected.usableSources,
         targetSources: collected.targetSources,
         minimumSources: collected.minimumSources,
+        verifiedPassages: collected.verifiedPassages,
+        targetPassages: collected.targetPassages,
+        claimsCovered: collected.claimsCovered,
+        claimsMissing: collected.claimsMissing,
+        roundsCompleted: collected.roundsCompleted,
+        rejectionCounts: collected.rejectionCounts,
+        plannerFallbackUsed: collected.plannerFallbackUsed,
         blocked: collected.blocked,
         durationMs: collected.durationMs,
         searchWorkers: collected.searchAudits.map(({ itemId, status, durationMs, signal, error, value }) => ({
@@ -91,6 +100,7 @@ export async function autoCollectRunSources(request: Request, context: Context):
           error: error instanceof Error ? error.message : null,
         })),
         triageWorkers: collected.triageAudits.map(({ itemId, status, durationMs, fallbackUsed, signal, error }) => ({ itemId, status, durationMs: durationMs ?? null, fallbackUsed, signal: signal ?? null, error: error instanceof Error ? error.message : null })),
+        reviewerWorkers: collected.reviewerAudits.map(({ itemId, status, durationMs, fallbackUsed, signal, error }) => ({ itemId, status, durationMs: durationMs ?? null, fallbackUsed, signal: signal ?? null, error: error instanceof Error ? error.message : null })),
         importWorkers: collected.importAudits.map(({ itemId, status, durationMs, signal }) => ({ itemId, status, durationMs: durationMs ?? null, signal: signal ?? null })),
       },
     }, { status: collected.blocked ? 206 : 201, headers: { "cache-control": "private, no-store" } });
@@ -275,8 +285,28 @@ export async function freezeRunPacket(request: Request, context: Context): Promi
       await access.coordinator.getPacketDraft(access.runId, access.token),
     );
     const usable = draft.sources.filter(({ chunks }) => chunks.length > 0);
-    if (usable.length < 2) {
-      throw new Error("Add at least two sources with permitted text before freezing the packet.");
+    const verification = draft.verification;
+    if (verification?.status !== "ready" || verification.passages.length !== 10 || verification.claimsMissing.length > 0) {
+      throw new Error("packet_not_ready: ten dual-model verified passages covering every claim are required before freeze");
+    }
+    const sources = new Map(usable.map(({ source }) => [source.id, source]));
+    const chunks = new Map(usable.flatMap(({ chunks: entryChunks }) => entryChunks).map((chunk) => [chunk.id, chunk]));
+    for (const passage of verification.passages) {
+      const source = sources.get(passage.sourceId);
+      const chunk = chunks.get(passage.sourceChunkId);
+      if (
+        !source || !chunk || chunk.sourceId !== source.id ||
+        source.contentHash !== passage.deterministic.sourceHash ||
+        chunk.contentHash !== passage.deterministic.chunkHash ||
+        canonicalSha256(passage.excerpt) !== passage.excerptHash ||
+        !chunk.text.includes(passage.excerpt) ||
+        source.rights.mayStore !== "allowed" ||
+        source.rights.mayDisplay !== "allowed" ||
+        source.rights.maySendToModel !== "allowed" ||
+        chunk.displayPermission !== "allowed"
+      ) {
+        throw new Error("packet_not_ready: verified passage hashes, rights, or literal membership changed");
+      }
     }
     const collected = await access.coordinator.collectSources(
       access.runId,

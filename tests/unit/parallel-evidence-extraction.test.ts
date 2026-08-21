@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import type { ResearchRun } from "../../src/contracts";
 import { goldenRunV02 } from "../../src/fixtures/golden-run-v0.2";
-import type { StructuredGenerationAdapter } from "../../src/server/models";
+import type { StructuredGenerationAdapter, StructuredGenerationRequest } from "../../src/server/models";
 import { extractEvidenceSourcesInParallel } from "../../src/server/research/live-extraction";
 import { assertNodeMayStart } from "../../src/server/workflow/state-machine";
 import { materializeEvidenceNodeOutput } from "../../src/server/workflow/run-api";
@@ -78,7 +78,7 @@ describe("parallel source evidence extraction", () => {
     const template = structuredClone(goldenRunV02.executions.find(({ nodeId, status }) => nodeId === "extract-evidence" && status === "succeeded")!);
     const adapter = {
       identity: { provider: "groq", modelId: "test-model", developerFamily: "test", baseFamily: "test" },
-      generate: async (request: any) => {
+      generate: async (request: StructuredGenerationRequest) => {
         const sourceId = String(request.nodeId).replace("extract-evidence:", "");
         const chunk = run.chunks.find((item) => item.sourceId === sourceId)!;
         return {

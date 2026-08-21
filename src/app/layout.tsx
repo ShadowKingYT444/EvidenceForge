@@ -3,6 +3,7 @@ import { Geist, Geist_Mono } from "next/font/google";
 import type { ReactNode } from "react";
 
 import "./globals.css";
+import "./midnight.css";
 
 export const metadata: Metadata = {
   title: "EvidenceForge · Epistemic CI",
