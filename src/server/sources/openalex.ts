@@ -5,7 +5,8 @@ export type ScholarlyCandidate = {
   openAlexId: string; title: string | null; canonicalDoi: string | null;
   publicationYear: number | null; authors: string[]; isOpenAccess: boolean;
   landingPageUrl: string | null; pdfUrl: string | null; license: string | null;
-  citationCount: number; hasAbstract: boolean;
+  citationCount: number; hasAbstract: boolean; abstract: string | null;
+  providerRelevanceScore: number | null;
 };
 
 function stableId(id: string): string { return id.replace(/^https:\/\/openalex\.org\//u, ""); }
@@ -15,12 +16,14 @@ export function normalizeOpenAlexCandidate(candidate: OpenAlexCandidate): Schola
   return {
     openAlexId: stableId(candidate.openAlexId), title: candidate.title,
     canonicalDoi: candidate.canonicalDoi, publicationYear: candidate.publicationYear,
+    providerRelevanceScore: candidate.providerRelevanceScore ?? null,
     authors: candidate.authors.map((author) => author.displayName),
     isOpenAccess: candidate.openAccessSignal.isOpenAccess,
     landingPageUrl: location?.landingPageUrl ?? null, pdfUrl: null,
     license: location?.licenseSignal ?? null,
     citationCount: candidate.citations.count,
     hasAbstract: candidate.abstractSignal.providerReportedAvailable,
+    abstract: candidate.abstractSignal.text ?? null,
   };
 }
 

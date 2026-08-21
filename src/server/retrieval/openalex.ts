@@ -30,6 +30,7 @@ const SELECT_FIELDS = [
   "doi",
   "title",
   "publication_year",
+  "relevance_score",
   "cited_by_count",
   "authorships",
   "primary_location",
@@ -61,6 +62,7 @@ const workSchema = z
     doi: z.string().nullable(),
     title: z.string().nullable(),
     publication_year: z.number().int().nullable(),
+    relevance_score: z.number().nonnegative().nullable().optional(),
     cited_by_count: z.number().int().nonnegative(),
     authorships: z.array(
       z
@@ -126,6 +128,7 @@ export type OpenAlexCandidate = {
     displayName: string;
   }[];
   publicationYear: number | null;
+  providerRelevanceScore?: number | null;
   providerDoi: string | null;
   canonicalDoi: string | null;
   source: {
@@ -134,7 +137,8 @@ export type OpenAlexCandidate = {
   } | null;
   abstractSignal: {
     providerReportedAvailable: boolean;
-    contentFetched: false;
+    contentFetched: boolean;
+    text?: string | null;
   };
   openAccessSignal: {
     isOpenAccess: boolean;
@@ -622,6 +626,16 @@ function projectLocation(
   };
 }
 
+function abstractText(index: Record<string, number[]> | null): string | null {
+  if (index === null || Object.keys(index).length === 0) return null;
+  const words: string[] = [];
+  for (const [word, positions] of Object.entries(index)) {
+    for (const position of positions) words[position] = word;
+  }
+  const text = words.filter(Boolean).join(" ").trim();
+  return text || null;
+}
+
 function projectCandidate(
   work: z.infer<typeof workSchema>,
 ): OpenAlexCandidate {
@@ -653,6 +667,7 @@ function projectCandidate(
         : [],
     ),
     publicationYear: work.publication_year,
+    providerRelevanceScore: work.relevance_score ?? null,
     providerDoi: work.doi,
     canonicalDoi,
     source,
@@ -660,7 +675,8 @@ function projectCandidate(
       providerReportedAvailable:
         work.abstract_inverted_index !== null &&
         Object.keys(work.abstract_inverted_index).length > 0,
-      contentFetched: false,
+      contentFetched: true,
+      text: abstractText(work.abstract_inverted_index),
     },
     openAccessSignal: {
       isOpenAccess: work.open_access.is_oa,

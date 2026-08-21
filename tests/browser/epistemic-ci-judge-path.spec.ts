@@ -6,7 +6,7 @@ test("completes the three-minute Epistemic CI judge path", async ({ page }) => {
   test.setTimeout(45_000);
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto("/");
-  await page.getByRole("button", { name: /Use deterministic battery demo instead/ }).click();
+  await page.getByRole("button", { name: /Try the demo/ }).click();
   const fixtureHashLabel = await page.locator("header code").first().textContent();
 
   await page.getByRole("button", { name: "Compile conclusion" }).click();
@@ -63,7 +63,7 @@ test("completes the three-minute Epistemic CI judge path", async ({ page }) => {
 test("opens node details and redirects the legacy workbench", async ({ page }) => {
   await page.goto("/workbench");
   await expect(page).toHaveURL(/\/$/);
-  await page.getByRole("button", { name: /Use deterministic battery demo instead/ }).click();
+  await page.getByRole("button", { name: /Try the demo/ }).click();
   await page.getByRole("button", { name: "Compile conclusion" }).click();
   await page.getByRole("button", { name: /gf-evidence-02/ }).click();
   const passageDialog = page.getByRole("dialog", { name: /gf-evidence-02/ });

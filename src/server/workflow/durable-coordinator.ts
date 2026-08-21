@@ -37,6 +37,7 @@ import {
 } from "./store";
 import { materializeEvidenceNodeOutput, RunService } from "./run-api";
 import { extractEvidenceSourcesInParallel, GenerationFailure } from "../research/live-extraction";
+import { PacketDraftSchema } from "../sources/packet-draft";
 
 export class RunAccessDeniedError extends Error {
   constructor() {
@@ -198,12 +199,84 @@ export class DurableRunCoordinator {
 
   async continue(runId: string, expectedRevision: string, accessToken: string) {
     const prior = await this.authorizedRevision(runId, expectedRevision, accessToken);
+    if (prior.run.evidenceMode === "live" && prior.run.status === "extracting_evidence") {
+      const draft = PacketDraftSchema.safeParse(await this.store.getPacketDraft?.(runId));
+      if (draft.success && draft.data.verification?.status === "ready") {
+        return this.continueVerifiedPassages(prior, draft.data);
+      }
+    }
     if (prior.run.evidenceMode === "live" && prior.run.status === "extracting_evidence" && prior.run.sources.length > 1) {
       return this.continueParallelExtraction(prior);
     }
     return this.mutate(runId, expectedRevision, accessToken, async (service) => {
       return service.continue({ runId, expectedRevision });
     });
+  }
+
+  private async continueVerifiedPassages(
+    prior: WorkflowRunSnapshot,
+    draft: ReturnType<typeof PacketDraftSchema.parse>,
+  ): Promise<MutationResult<{ advanced: boolean; failure: null }>> {
+    const verification = draft.verification;
+    if (!verification || verification.status !== "ready" || verification.passages.length !== 10 || !prior.run.packet) {
+      throw new Error("Verified passage continuation requires one ready frozen ten-passage packet.");
+    }
+    const primaryAttempts = new Map(verification.primaryAttempts.map((attempt) => [attempt.id, attempt]));
+    const cards = verification.passages.flatMap((passage) => {
+      const attempt = primaryAttempts.get(passage.primary.executionId);
+      if (!attempt) throw new Error("Verified passage primary execution is missing from the packet audit.");
+      return materializeEvidenceNodeOutput(prior.run, "extract-evidence", {
+        evidenceCandidates: [{
+          subclaimId: passage.subclaimId,
+          sourceChunkId: passage.sourceChunkId,
+          excerpt: passage.excerpt,
+          extractedResult: passage.extractedResult,
+          settingAndSample: passage.settingAndSample,
+          studyType: passage.studyType,
+          limitation: passage.limitation,
+          extractionIssues: passage.extractionIssues,
+        }],
+      }, attempt).evidenceCards;
+    }).sort((left, right) => left.id.localeCompare(right.id));
+    if (cards.length !== 10 || new Set(cards.map(({ id }) => id)).size !== cards.length) {
+      throw new Error("Verified passage materialization did not produce ten unique evidence cards.");
+    }
+
+    const outputRefsByExecution = new Map<string, string[]>();
+    for (const card of cards) {
+      const refs = outputRefsByExecution.get(card.modelAssessment.executionId) ?? [];
+      refs.push(card.id);
+      outputRefsByExecution.set(card.modelAssessment.executionId, refs);
+    }
+    for (const passage of verification.passages) {
+      const refs = outputRefsByExecution.get(passage.reviewer.executionId) ?? [];
+      refs.push(passage.id);
+      outputRefsByExecution.set(passage.reviewer.executionId, refs);
+    }
+
+    const errors = [...verification.primaryErrors, ...verification.reviewerErrors];
+    const attempts = [...verification.primaryAttempts, ...verification.reviewerAttempts];
+    let snapshot = prior;
+    for (const [index, rawAttempt] of attempts.entries()) {
+      const attempt = NodeExecutionSchema.parse({
+        ...rawAttempt,
+        outputRefs: rawAttempt.status === "succeeded" ? [...new Set(outputRefsByExecution.get(rawAttempt.id) ?? [])].sort() : [],
+      });
+      const attemptErrors = errors.filter((error) => error.executionId === attempt.id);
+      let candidate = appendExecutionAttempt(
+        snapshot.run,
+        attempt,
+        attemptErrors,
+        timestampAfter(snapshot.run),
+        snapshot.objectionDispositions,
+      );
+      if (index === attempts.length - 1) candidate = ResearchRunSchema.parse({ ...candidate, evidenceCards: cards });
+      snapshot = await this.store.save(candidate, snapshot.revision, snapshot.objectionDispositions);
+    }
+    if (attempts.length === 0) throw new Error("Verified passage packet has no model audit attempts.");
+    const advanced = advanceRun(snapshot.run, "verifying_evidence", timestampAfter(snapshot.run), snapshot.objectionDispositions);
+    snapshot = await this.store.save(advanced, snapshot.revision, snapshot.objectionDispositions);
+    return { snapshot, value: { advanced: true, failure: null } };
   }
 
   private async continueParallelExtraction(prior: WorkflowRunSnapshot): Promise<MutationResult<{ advanced: boolean; failure: null | { code: string; details: string } }>> {

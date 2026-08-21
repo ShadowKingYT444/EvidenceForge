@@ -15,16 +15,15 @@ export default function ExamplePage() {
         <span>Rehearsed live case</span>
       </header>
       <section className="research-example-hero">
-        <p className="research-kicker"><FlaskConical size={14} /> Judge demo investigation</p>
-        <h1>Does retrieval augmentation reduce factual hallucination?</h1>
-        <p>This is the case we use to demonstrate EvidenceForge. The question and candidate papers are rehearsed; source ingestion, passage verification, model assessment, and human decisions run through the real workflow.</p>
-        <div className="research-example-notice"><CircleAlert size={18} /><span>No result is prewritten. The app may conclude that the packet supports, conflicts with, or cannot resolve the claim.</span></div>
-        <Link className="research-button research-button-primary" href="/intake?example=ai-reliability">Run this investigation live <ArrowRight size={17} /></Link>
+        <p className="research-kicker"><FlaskConical size={14} /> Rehearsed live case</p>
+        <h1>Does retrieval reduce factual hallucination?</h1>
+        <div className="research-example-notice"><CircleAlert size={17} /><span>The workflow is real. The result is not prewritten.</span></div>
+        <div className="research-example-actions"><Link className="research-button research-button-primary" href="/intake?example=ai-reliability">Run the case <ArrowRight size={17} /></Link><span>3 candidate papers · live verification</span></div>
       </section>
-      <section className="research-example-packet" aria-labelledby="example-packet-title">
-        <div><p className="research-kicker"><BookOpenCheck size={14} /> Candidate packet</p><h2 id="example-packet-title">Designed to include support and limitations.</h2></div>
+      <details className="research-example-packet">
+        <summary><span><BookOpenCheck size={15} /> Candidate packet</span><strong>View 3 sources</strong></summary>
         <ol>{papers.map((paper) => <li key={paper}>{paper}</li>)}</ol>
-      </section>
+      </details>
     </main>
   );
 }

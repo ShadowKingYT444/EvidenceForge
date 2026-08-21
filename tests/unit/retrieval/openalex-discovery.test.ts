@@ -170,6 +170,7 @@ describe("bounded OpenAlex discovery", () => {
         },
       ],
       publicationYear: 2024,
+      providerRelevanceScore: null,
       providerDoi: "https://doi.org/10.1000/example-one",
       canonicalDoi: "10.1000/example-one",
       source: {
@@ -178,7 +179,8 @@ describe("bounded OpenAlex discovery", () => {
       },
       abstractSignal: {
         providerReportedAvailable: true,
-        contentFetched: false,
+        contentFetched: true,
+        text: "Bounded abstract",
       },
       openAccessSignal: {
         isOpenAccess: false,
