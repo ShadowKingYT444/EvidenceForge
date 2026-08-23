@@ -147,7 +147,8 @@ export const PacketDraftSchema = z.object({
   if (!verification) return;
   const verifiedIds = verification.passages.map(({ id }) => id);
   const pendingIds = verification.pendingPassages.map(({ id }) => id);
-  if (new Set(verifiedIds).size !== verifiedIds.length || new Set(pendingIds).size !== pendingIds.length) context.addIssue({ code: "custom", path: ["verification"], message: "Passage IDs must be unique within verified and pending sets" });
+  const allPassageIds = [...verifiedIds, ...pendingIds];
+  if (new Set(allPassageIds).size !== allPassageIds.length) context.addIssue({ code: "custom", path: ["verification"], message: "Passage IDs must be globally unique across verified and pending sets" });
 
   const checkReference = (passage: { sourceId: string; sourceChunkId: string; excerpt: string }, sourceHash: string, chunkHash: string, path: (string | number)[], excerptHash?: string) => {
     const source = sourceById.get(passage.sourceId);

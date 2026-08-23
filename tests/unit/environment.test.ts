@@ -73,9 +73,10 @@ describe("readRuntimeEnvironment", () => {
         EVIDENCE_MODE: "live",
         PRIMARY_PROVIDER: "featherless",
         PRIMARY_MODEL: "mistralai/Mistral-Large-Instruct-2411",
-        REVIEW_PROVIDER: "featherless",
-        REVIEW_MODEL: "Qwen/Qwen2.5-72B-Instruct",
+        REVIEW_PROVIDER: "nvidia_nim",
+        REVIEW_MODEL: "meta/llama-3.1-8b-instruct",
         FEATHERLESS_API_KEY: "test-only-featherless-key",
+        NVIDIA_API_KEY: "test-only-nvidia-key",
         OPENALEX_API_KEY: "test-only-openalex-key",
       }),
     ).toEqual({
@@ -86,9 +87,9 @@ describe("readRuntimeEnvironment", () => {
         apiKey: "test-only-featherless-key",
       },
       reviewer: {
-        provider: "featherless",
-        model: "Qwen/Qwen2.5-72B-Instruct",
-        apiKey: "test-only-featherless-key",
+        provider: "nvidia_nim",
+        model: "meta/llama-3.1-8b-instruct",
+        apiKey: "test-only-nvidia-key",
       },
     });
   });
@@ -166,5 +167,19 @@ describe("readRuntimeEnvironment", () => {
   it("requires a production run secret on every hosting vendor", () => {
     expect(evaluateLiveReadiness({ NODE_ENV: "production", EVIDENCE_MODE: "fixture" }).reasons)
       .toContain("run_token_secret_missing");
+  });
+
+  it("rejects a same-provider topology that cannot produce independent judgments", () => {
+    const readiness = evaluateLiveReadiness({
+      EVIDENCE_MODE: "live",
+      PRIMARY_PROVIDER: "nvidia_nim",
+      PRIMARY_MODEL: "meta/llama-3.1-8b-instruct",
+      REVIEW_PROVIDER: "nvidia_nim",
+      REVIEW_MODEL: "meta/llama-3.1-8b-instruct",
+      NVIDIA_API_KEY: "test-only-nvidia-key",
+      OPENALEX_API_KEY: "test-only-openalex-key",
+    });
+    expect(readiness.liveInvestigationsReady).toBe(false);
+    expect(readiness.reasons).toContain("providers_not_independent");
   });
 });

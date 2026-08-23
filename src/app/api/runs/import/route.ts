@@ -8,10 +8,11 @@ import { runTokenCookie } from "@/server/auth/run-token";
 export const dynamic = "force-dynamic";
 
 export async function POST(request: Request): Promise<Response> {
+  const startedAt = Date.now();
   try {
     const declaredLength = Number(request.headers.get("content-length") ?? "0");
     if (Number.isFinite(declaredLength) && declaredLength > 1_024 * 1_024) {
-      return recoveryErrorResponse(new RecoveryError("request_too_large", "Recovery import exceeds the maximum size."));
+      return recoveryErrorResponse(new RecoveryError("request_too_large", "Recovery import exceeds the maximum size."), { request, operation: "import_recovery", durationMs: Date.now() - startedAt });
     }
     const bytes = new Uint8Array(await request.arrayBuffer());
     const imported = await getRecoveryService().importBytes(bytes);
@@ -28,6 +29,6 @@ export async function POST(request: Request): Promise<Response> {
     }
     return Response.json(imported, { headers: { "cache-control": "private, no-store" } });
   } catch (error) {
-    return recoveryErrorResponse(error);
+    return recoveryErrorResponse(error, { request, operation: "import_recovery", durationMs: Date.now() - startedAt });
   }
 }

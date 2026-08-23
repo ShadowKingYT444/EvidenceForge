@@ -1,3 +1,5 @@
+import { randomUUID } from "node:crypto";
+
 import { canonicalSha256 } from "../../contracts";
 import { extractRunToken } from "../auth/run-token";
 import { getDurableRunCoordinator, RunAccessDeniedError } from "../workflow/durable-coordinator";
@@ -218,12 +220,37 @@ export function createEpistemicLiveService(dependencies: Partial<EpistemicLiveDe
   return new EpistemicLiveService(dependencies);
 }
 
-export function epistemicErrorResponse(error: unknown): Response {
+type EpistemicErrorContext = { request?: Request; operation?: string; durationMs?: number };
+
+export function epistemicErrorResponse(error: unknown, context: EpistemicErrorContext = {}): Response {
   const known = error instanceof EpistemicLiveError;
   const status = known ? error.status : error instanceof Error && error.name === "ZodError" ? 400 : 500;
   const code = known ? error.code : status === 400 ? "invalid_request" : "internal_error";
   const message = status >= 500 ? "The epistemic request could not be completed." : error instanceof Error ? error.message : "Invalid request.";
-  return Response.json({ error: { code, message, retryable: status === 409 || status >= 500 } }, { status, headers: { "cache-control": "private, no-store" } });
+  const supplied = context.request?.headers.get("x-request-id")?.trim();
+  const correlationId = supplied && /^[A-Za-z0-9._:-]{8,128}$/u.test(supplied) ? supplied : randomUUID();
+  let runIdHash: string | undefined;
+  try {
+    const match = context.request ? new URL(context.request.url).pathname.match(/\/api\/runs\/([^/]+)/u) : null;
+    runIdHash = match ? canonicalSha256(decodeURIComponent(match[1])).slice(0, 16) : undefined;
+  } catch {
+    runIdHash = undefined;
+  }
+  const retryable = status === 409 || status >= 500;
+  console.error(JSON.stringify({
+    correlationId,
+    operation: context.operation ?? "epistemic_route",
+    runIdHash,
+    errorClass: error instanceof Error ? error.name : "UnknownError",
+    code,
+    httpStatus: status,
+    retryable,
+    ...(context.durationMs === undefined ? {} : { durationMs: Math.max(0, Math.round(context.durationMs)) }),
+  }));
+  return Response.json(
+    { error: { code, message, retryable, correlationId } },
+    { status, headers: { "cache-control": "private, no-store", "x-correlation-id": correlationId } },
+  );
 }
 
 export async function parseEpistemicJson(request: Request): Promise<unknown> {

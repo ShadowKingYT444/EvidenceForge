@@ -11,5 +11,8 @@ export default defineConfig({
   test: {
     environment: "node",
     include: ["tests/unit/**/*.test.ts"],
+    // Windows Defender/filesystem contention can push the immutable-artifact
+    // tests past Vitest's default timeout when the suite fans out.
+    testTimeout: process.platform === "win32" ? 15_000 : undefined,
   },
 });

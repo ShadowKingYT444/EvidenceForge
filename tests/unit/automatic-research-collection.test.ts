@@ -337,6 +337,7 @@ describe("automatic research collection", () => {
     });
     expect(deeper.status).toBe("ready");
     expect(deeper.verifiedPassages).toBe(10);
+    expect(deeper.candidatesConsidered).toBeGreaterThanOrEqual(first.candidatesConsidered);
     expect([...priorIds].every((id) => deeper.draft.verification?.passages.some((passage) => passage.id === id))).toBe(true);
     expect(deeper.draft.verification?.verificationAttempt).toBe(2);
   });

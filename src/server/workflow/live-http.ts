@@ -83,6 +83,16 @@ export class UpstreamProviderError extends Error {
   constructor() { super("The upstream provider could not complete the request."); this.name = "UpstreamProviderError"; }
 }
 
+export class InvalidRequestError extends Error {
+  readonly code = "invalid_request";
+  constructor(message: string) { super(message); this.name = "InvalidRequestError"; }
+}
+
+export class WorkflowStateConflictError extends Error {
+  readonly code = "workflow_state_conflict";
+  constructor(message: string) { super(message); this.name = "WorkflowStateConflictError"; }
+}
+
 type ErrorContext = { request?: Request; operation?: string; durationMs?: number };
 
 function correlationId(request?: Request): string {
@@ -102,14 +112,15 @@ export function liveRouteError(error: unknown, context: ErrorContext = {}): Resp
   const status =
     error instanceof RunAccessDeniedError ? 404 :
       error instanceof RunNotFoundError ? 404 :
-        error instanceof RevisionConflictError ? 409 :
-          error instanceof z.ZodError ? 400 :
+          error instanceof RevisionConflictError ? 409 :
+          error instanceof WorkflowStateConflictError ? 409 :
+          error instanceof z.ZodError || error instanceof InvalidRequestError ? 400 :
             error instanceof EnvironmentValidationError ? 503 :
               error instanceof ProviderRateLimitError ? 429 :
                 error instanceof UpstreamProviderError ? 502 : 500;
   const code =
     status === 404 ? "run_not_found" :
-      status === 409 ? "revision_conflict" :
+      status === 409 ? error instanceof WorkflowStateConflictError ? "workflow_state_conflict" : "revision_conflict" :
         status === 400 ? "invalid_request" :
           status === 503 ? "runtime_configuration_invalid" :
             status === 429 ? "provider_rate_limited" :
@@ -125,7 +136,9 @@ export function liveRouteError(error: unknown, context: ErrorContext = {}): Resp
     error instanceof RunAccessDeniedError ? "RunAccessDeniedError" :
       error instanceof RunNotFoundError ? "RunNotFoundError" :
         error instanceof RevisionConflictError ? "RevisionConflictError" :
+          error instanceof WorkflowStateConflictError ? "WorkflowStateConflictError" :
           error instanceof z.ZodError ? "ZodError" :
+            error instanceof InvalidRequestError ? "InvalidRequestError" :
             error instanceof EnvironmentValidationError ? "EnvironmentValidationError" :
               error instanceof ProviderRateLimitError ? "ProviderRateLimitError" :
                 error instanceof UpstreamProviderError ? "UpstreamProviderError" : "InternalError";

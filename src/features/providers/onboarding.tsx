@@ -89,9 +89,9 @@ export function ProviderOnboarding() {
 
       <section className="provider-hero" aria-labelledby="connect-title">
         <div className="provider-hero-copy">
-          <p className="provider-eyebrow">Model workspace</p>
-          <h1 id="connect-title">Connect a model provider</h1>
-          <p className="provider-lede">Choose a provider to power this session.</p>
+          <p className="provider-eyebrow">Credential diagnostic</p>
+          <h2 id="connect-title">Test a model-provider key</h2>
+          <p className="provider-lede">This bounded check does not change the server configuration or enable live investigations.</p>
         </div>
         <div className="provider-security-note" aria-label="Credential handling">
           <span className="security-dot" aria-hidden="true" />

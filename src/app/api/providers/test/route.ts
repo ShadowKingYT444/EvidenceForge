@@ -1,3 +1,5 @@
+import { randomUUID } from "node:crypto";
+
 import { connectionLimits, verifyProviderConnection } from "../../../../server/providers/connection";
 
 const JSON_HEADERS = {
@@ -7,8 +9,8 @@ const JSON_HEADERS = {
   "referrer-policy": "no-referrer",
 };
 
-function reply(body: unknown, status = 200): Response {
-  return new Response(JSON.stringify(body), { status, headers: JSON_HEADERS });
+function reply(body: unknown, status = 200, headers: Record<string, string> = {}): Response {
+  return new Response(JSON.stringify(body), { status, headers: { ...JSON_HEADERS, ...headers } });
 }
 
 type HeaderValue = { present: false; value: null } | { present: true; value: string } | { present: true; value: null };
@@ -108,5 +110,23 @@ export async function POST(request: Request): Promise<Response> {
   }
   const result = await verifyProviderConnection(value, { rateKey: clientKey(request) });
   const status = result.ok ? 200 : result.error.code === "rate_limited" ? 429 : result.error.code === "invalid_request" ? 400 : 502;
+  if (!result.ok) {
+    const supplied = request.headers.get("x-request-id")?.trim();
+    const correlationId = supplied && /^[A-Za-z0-9._:-]{8,128}$/u.test(supplied) ? supplied : randomUUID();
+    console.error(JSON.stringify({
+      correlationId,
+      operation: "verify_provider_connection",
+      errorClass: "ProviderConnectionError",
+      code: result.error.code,
+      category: result.error.category,
+      httpStatus: status,
+      retryable: status === 429 || status >= 500,
+    }));
+    return reply(
+      { ...result, error: { ...result.error, correlationId } },
+      status,
+      { "x-correlation-id": correlationId },
+    );
+  }
   return reply(result, status);
 }

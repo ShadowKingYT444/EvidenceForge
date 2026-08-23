@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 
 import { EnvironmentValidationError } from "../../src/server/environment";
-import { ProviderRateLimitError, UpstreamProviderError, liveRouteError } from "../../src/server/workflow/live-http";
+import { InvalidRequestError, ProviderRateLimitError, UpstreamProviderError, WorkflowStateConflictError, liveRouteError } from "../../src/server/workflow/live-http";
 import { RevisionConflictError, RunNotFoundError } from "../../src/server/workflow/store";
 
 describe("live route error classification", () => {
@@ -11,7 +11,9 @@ describe("live route error classification", () => {
   it.each([
     [new RunNotFoundError("private-run"), 404, "run_not_found"],
     [new z.ZodError([]), 400, "invalid_request"],
+    [new InvalidRequestError("bad body"), 400, "invalid_request"],
     [new RevisionConflictError("private-run"), 409, "revision_conflict"],
+    [new WorkflowStateConflictError("wrong phase"), 409, "workflow_state_conflict"],
     [new EnvironmentValidationError(["OPENALEX_API_KEY"]), 503, "runtime_configuration_invalid"],
     [new ProviderRateLimitError(), 429, "provider_rate_limited"],
     [new UpstreamProviderError(), 502, "upstream_provider_failure"],

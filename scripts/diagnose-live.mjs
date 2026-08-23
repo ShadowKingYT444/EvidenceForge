@@ -36,10 +36,26 @@ async function boundedCheck(target, provider, model, url, init) {
   try {
     const response = await fetch(url, { ...init, signal: controller.signal });
     const code = classify(response.status);
-    const length = Number(response.headers.get("content-length") ?? 0);
-    const ok = code === "ok" && length <= 64 * 1024;
-    await response.body?.cancel().catch(() => undefined);
-    return { target, provider, model, category: ok ? "success" : `http_${Math.floor(response.status / 100)}xx`, latencyMs: Date.now() - startedAt, code: ok ? "ok" : length > 64 * 1024 ? "invalid_response" : code, ok };
+    const declaredLength = Number(response.headers.get("content-length") ?? 0);
+    if (declaredLength > 64 * 1024) {
+      await response.body?.cancel().catch(() => undefined);
+      return { target, provider, model, category: "invalid_response", latencyMs: Date.now() - startedAt, code: "invalid_response", ok: false };
+    }
+    const body = await response.text();
+    if (new TextEncoder().encode(body).byteLength > 64 * 1024) {
+      return { target, provider, model, category: "invalid_response", latencyMs: Date.now() - startedAt, code: "invalid_response", ok: false };
+    }
+    let expectedShape = false;
+    try {
+      const parsed = JSON.parse(body);
+      expectedShape = target === "openalex"
+        ? Array.isArray(parsed?.results)
+        : Array.isArray(parsed?.choices) && parsed.choices.length > 0;
+    } catch {
+      expectedShape = false;
+    }
+    const ok = code === "ok" && expectedShape;
+    return { target, provider, model, category: ok ? "success" : code === "ok" ? "invalid_response" : `http_${Math.floor(response.status / 100)}xx`, latencyMs: Date.now() - startedAt, code: ok ? "ok" : code === "ok" ? "invalid_response" : code, ok };
   } catch (error) {
     const timedOut = error instanceof DOMException && error.name === "AbortError";
     return { target, provider, model, category: timedOut ? "timeout" : "network_error", latencyMs: Date.now() - startedAt, code: timedOut ? "timeout" : "network_error", ok: false };
@@ -76,6 +92,9 @@ if (mode !== "live") {
       checks.push(Promise.resolve(configurationFailure(target, safeProvider, safeModel)));
     }
     else checks.push(boundedCheck(target, provider, model, providers[provider], { method: "POST", headers: { "content-type": "application/json", authorization: `Bearer ${process.env[keys[provider]].trim()}` }, body: JSON.stringify({ model, max_tokens: 8, messages: [{ role: "user", content: "Reply with one word: ok" }], stream: false }) }));
+  }
+  if (primaryProvider && reviewerProvider && primaryProvider === reviewerProvider) {
+    checks.push(Promise.resolve(configurationFailure("topology", primaryProvider)));
   }
   results = await Promise.all(checks);
 }

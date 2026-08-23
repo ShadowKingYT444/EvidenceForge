@@ -1,12 +1,15 @@
 import { defineConfig, devices } from "@playwright/test";
 
+const port = Number(process.env.PLAYWRIGHT_PORT ?? 3100);
+const baseURL = `http://127.0.0.1:${port}`;
+
 export default defineConfig({
   testDir: "./tests/browser",
   fullyParallel: true,
   retries: process.env.CI ? 1 : 0,
   reporter: "list",
   use: {
-    baseURL: "http://127.0.0.1:3100",
+    baseURL,
     trace: "retain-on-failure",
   },
   projects: [
@@ -17,9 +20,9 @@ export default defineConfig({
   ],
   webServer: {
     command:
-      "corepack pnpm exec next start --hostname 127.0.0.1 --port 3100",
-    url: "http://127.0.0.1:3100",
-    reuseExistingServer: !process.env.CI,
+      `corepack pnpm exec next start --hostname 127.0.0.1 --port ${port}`,
+    url: baseURL,
+    reuseExistingServer: !process.env.CI && process.env.PLAYWRIGHT_PORT === undefined,
     timeout: 30_000,
   },
 });

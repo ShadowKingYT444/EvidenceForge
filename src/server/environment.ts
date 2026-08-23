@@ -17,6 +17,7 @@ export type LiveReadinessReasonCode =
   | "reviewer_model_missing"
   | "reviewer_model_not_allowed"
   | "reviewer_key_missing"
+  | "providers_not_independent"
   | "openalex_key_missing"
   | "run_token_secret_missing"
   | "cache_ttl_invalid";
@@ -99,6 +100,16 @@ export function evaluateLiveReadiness(source: EnvironmentSource = process.env): 
     ...primary.reasons,
     ...reviewer.reasons,
   ];
+  if (
+    live &&
+    primary.safe.allowed &&
+    reviewer.safe.allowed &&
+    primary.safe.provider !== null &&
+    reviewer.safe.provider !== null &&
+    primary.safe.provider === reviewer.safe.provider
+  ) {
+    reasons.push("providers_not_independent");
+  }
   const openalexConfigured = Boolean(normalize(source.OPENALEX_API_KEY));
   if (live && !openalexConfigured) reasons.push("openalex_key_missing");
   const production = source.NODE_ENV === "production";
@@ -133,6 +144,7 @@ const fieldByReason: Record<LiveReadinessReasonCode, string> = {
   reviewer_model_missing: "REVIEW_MODEL",
   reviewer_model_not_allowed: "REVIEW_MODEL",
   reviewer_key_missing: "REVIEW_PROVIDER_API_KEY",
+  providers_not_independent: "PRIMARY_PROVIDER/REVIEW_PROVIDER",
   openalex_key_missing: "OPENALEX_API_KEY",
   run_token_secret_missing: "RUN_TOKEN_SECRET",
   cache_ttl_invalid: "RUN_CACHE_TTL_MINUTES",

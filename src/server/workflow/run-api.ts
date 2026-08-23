@@ -1675,9 +1675,15 @@ export class RunService {
         }),
       );
     } catch (error) {
-      if (!process.env.RENDER) {
-        console.error("EvidenceForge prompt materialization failed", error);
-      }
+      console.error(JSON.stringify({
+        operation: "prompt_materialization",
+        runIdHash: canonicalSha256(snapshot.run.id).slice(0, 16),
+        nodeId,
+        errorClass: error instanceof Error ? error.name : "UnknownError",
+        code: "prompt_materialization_failed",
+        httpStatus: 500,
+        retryable: false,
+      }));
       throw new RunServiceBlockedError(
         snapshot.run.id,
         snapshot.revision,

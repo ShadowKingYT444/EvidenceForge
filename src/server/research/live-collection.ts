@@ -1171,7 +1171,9 @@ export async function collectAutomaticResearchPacket(input: {
   const addedEntries = importPool.results.flatMap((audit) => audit.value ? [{ source: audit.value.imported.source, chunks: audit.value.imported.chunks, importedAt: new Date(audit.finishedAt).toISOString() }] : []);
   const entries = mergeDraftEntries(currentDraft.sources, addedEntries);
   const proposals = passageProposals(importPool.results, input.run);
-  const uniqueCandidateIds = new Set(allSearchAudits.flatMap(({ candidateIds }) => candidateIds));
+  const priorCandidateIds = new Set((prior?.searchAudits ?? []).flatMap(({ candidateIds }) => candidateIds));
+  const currentCandidateIds = new Set(currentSearchAudits.flatMap(({ candidateIds }) => candidateIds));
+  const newlyConsideredCandidates = [...currentCandidateIds].filter((id) => !priorCandidateIds.has(id)).length;
   const currentProviderFailures = [...searchFailures, ...importFailures];
   const verified = await verifyAndMerge({
     run: input.run,
@@ -1179,7 +1181,7 @@ export async function collectAutomaticResearchPacket(input: {
     entries,
     queries,
     searchAudits: allSearchAudits,
-    candidatesConsidered: uniqueCandidateIds.size,
+    candidatesConsidered: (prior?.candidatesConsidered ?? 0) + newlyConsideredCandidates,
     plannerFallbackUsed: Boolean(prior?.plannerFallbackUsed || planned.fallbackUsed),
     rejectionCounts: counts,
     verificationAttempt: (prior?.verificationAttempt ?? 0) + 1,
