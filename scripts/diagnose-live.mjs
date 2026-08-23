@@ -1,3 +1,16 @@
+import { existsSync, readFileSync } from "node:fs";
+
+if (existsSync(".env")) {
+  for (const line of readFileSync(".env", "utf8").split(/\r?\n/u)) {
+    const match = line.match(/^([A-Z][A-Z0-9_]*)=(.*)$/u);
+    if (!match || process.env[match[1]] !== undefined) continue;
+    const raw = match[2].trim();
+    process.env[match[1]] = raw.length >= 2 && raw[0] === raw.at(-1) && (raw[0] === '"' || raw[0] === "'")
+      ? raw.slice(1, -1)
+      : raw;
+  }
+}
+
 const providers = {
   featherless: "https://api.featherless.ai/v1/chat/completions",
   groq: "https://api.groq.com/openai/v1/chat/completions",
