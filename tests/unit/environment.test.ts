@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   EnvironmentValidationError,
+  evaluateLiveReadiness,
   readRuntimeEnvironment,
 } from "../../src/server/environment";
 
@@ -34,6 +35,7 @@ describe("readRuntimeEnvironment", () => {
         "PRIMARY_MODEL",
         "REVIEW_PROVIDER",
         "REVIEW_MODEL",
+        "OPENALEX_API_KEY",
       ]),
     );
   });
@@ -48,6 +50,7 @@ describe("readRuntimeEnvironment", () => {
         REVIEW_PROVIDER: "nvidia_nim",
         REVIEW_MODEL: "meta/llama-3.1-8b-instruct",
         NVIDIA_API_KEY: "test-only-nvidia-key",
+        OPENALEX_API_KEY: "test-only-openalex-key",
       }),
     ).toEqual({
       evidenceMode: "live",
@@ -73,6 +76,7 @@ describe("readRuntimeEnvironment", () => {
         REVIEW_PROVIDER: "featherless",
         REVIEW_MODEL: "Qwen/Qwen2.5-72B-Instruct",
         FEATHERLESS_API_KEY: "test-only-featherless-key",
+        OPENALEX_API_KEY: "test-only-openalex-key",
       }),
     ).toEqual({
       evidenceMode: "live",
@@ -99,6 +103,7 @@ describe("readRuntimeEnvironment", () => {
         REVIEW_PROVIDER: "featherless",
         REVIEW_MODEL: "Qwen/Qwen2.5-72B-Instruct",
         FEATHERLESS_API_KEY: "test-only-featherless-key",
+        OPENALEX_API_KEY: "test-only-openalex-key",
       });
       throw new Error("expected retired primary model rejection");
     } catch (error) {
@@ -134,5 +139,32 @@ describe("readRuntimeEnvironment", () => {
     } catch (error) {
       expect(String(error)).not.toContain(secret);
     }
+  });
+
+  it("reports safe, actionable live readiness without secret material", () => {
+    const secret = "never-return-this-secret";
+    const readiness = evaluateLiveReadiness({
+      EVIDENCE_MODE: "live",
+      PRIMARY_PROVIDER: "groq",
+      PRIMARY_MODEL: "openai/gpt-oss-120b",
+      GROQ_API_KEY: secret,
+      REVIEW_PROVIDER: "nvidia_nim",
+      REVIEW_MODEL: "meta/llama-3.1-8b-instruct",
+      NVIDIA_API_KEY: secret,
+      RUN_CACHE_TTL_MINUTES: "45",
+    });
+    expect(readiness).toMatchObject({
+      ready: false,
+      liveInvestigationsReady: false,
+      reasons: ["openalex_key_missing"],
+      cache: { scope: "process_local", ttlMinutes: 45, survivesRestart: false },
+      primary: { provider: "groq", model: "openai/gpt-oss-120b", configured: true, allowed: true },
+    });
+    expect(JSON.stringify(readiness)).not.toContain(secret);
+  });
+
+  it("requires a production run secret on every hosting vendor", () => {
+    expect(evaluateLiveReadiness({ NODE_ENV: "production", EVIDENCE_MODE: "fixture" }).reasons)
+      .toContain("run_token_secret_missing");
   });
 });

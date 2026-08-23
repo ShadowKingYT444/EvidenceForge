@@ -20,6 +20,7 @@ import { createPromptRunNodeRequestBuilder } from "../prompts/render";
 import {
   createRunToken,
   digestRunToken,
+  readRunTokenSecret,
 } from "../auth/run-token";
 import {
   persistCollectedSources,
@@ -31,6 +32,7 @@ import {
 import {
   AsyncWorkflowRunStoreAdapter,
   InMemoryWorkflowRunStore,
+  RevisionConflictError,
   RunNotFoundError,
   type WorkflowRunSnapshot,
   type WorkflowRunStore,
@@ -50,18 +52,6 @@ type MutationResult<T> = {
   snapshot: WorkflowRunSnapshot;
   value: T;
 };
-
-function tokenSecret(): string {
-  const configured = process.env.RUN_TOKEN_SECRET?.trim();
-  if (configured) return configured;
-  if (
-    process.env.NODE_ENV === "production" &&
-    process.env.RENDER
-  ) {
-    throw new Error("RUN_TOKEN_SECRET is required in production");
-  }
-  return "evidenceforge-local-development-token-secret";
-}
 
 export function configuredResearchAdapters(): {
   primary: StructuredGenerationAdapter;
@@ -143,7 +133,7 @@ function createEphemeralService(store: InMemoryWorkflowRunStore): RunService {
 }
 
 function digest(token: string): string {
-  return digestRunToken(token, tokenSecret());
+  return digestRunToken(token, readRunTokenSecret());
 }
 
 export class DurableRunCoordinator {
@@ -522,7 +512,7 @@ export class DurableRunCoordinator {
   ) {
     const snapshot = await this.authorize(runId, accessToken);
     if (snapshot.revision !== expectedRevision) {
-      throw new Error("The investigation changed in another request. Refresh and retry.");
+      throw new RevisionConflictError(runId);
     }
     return snapshot;
   }

@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { DurableRunCoordinator, RunAccessDeniedError } from "../../src/server/workflow/durable-coordinator";
-import { AsyncWorkflowRunStoreAdapter, InMemoryWorkflowRunStore } from "../../src/server/workflow/store";
+import { AsyncWorkflowRunStoreAdapter, InMemoryWorkflowRunStore, RevisionConflictError } from "../../src/server/workflow/store";
 
 const intake = {
   originalQuestion: "Does retrieval augmentation reduce factual hallucination?",
@@ -60,5 +60,13 @@ describe("private cached run coordinator", () => {
     expect(continued.snapshot.run.status).toBe("decomposing");
     expect(continued.snapshot.run.executions).toHaveLength(1);
     expect(continued.snapshot.run.errors).toHaveLength(1);
+  });
+
+  it("throws the typed conflict for stale authorized revisions", async () => {
+    process.env.RUN_TOKEN_SECRET = "test-run-token-secret";
+    const coordinator = new DurableRunCoordinator(new AsyncWorkflowRunStoreAdapter(new InMemoryWorkflowRunStore()));
+    const created = await coordinator.create(intake);
+    await expect(coordinator.continue(created.snapshot.run.id, "stale-revision", created.accessToken))
+      .rejects.toBeInstanceOf(RevisionConflictError);
   });
 });
