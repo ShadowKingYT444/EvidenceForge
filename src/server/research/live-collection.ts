@@ -5,6 +5,7 @@ import { canonicalSha256, type NodeExecution, type ResearchRun } from "../../con
 import type { StructuredGenerationAdapter, StructuredGenerationResult } from "../models";
 import { configuredResearchAdapters } from "../workflow/durable-coordinator";
 import { providerJsonSchema } from "../workflow/run-api";
+import { importFirecrawlCandidate, searchFirecrawl, type FirecrawlCandidate, type FirecrawlSearchResult } from "../sources/firecrawl";
 import { importOpenAlexWork } from "../sources/import-service";
 import {
   PacketDraftSchema,
@@ -100,6 +101,7 @@ type PassageProposal = z.output<typeof PendingPassageSchema>;
 type ProviderFailure = z.output<typeof ProviderFailureSchema>;
 type PacketVerification = NonNullable<PacketDraft["verification"]>;
 type DraftEntry = PacketDraft["sources"][number];
+type SearchProviderResult = Awaited<ReturnType<typeof searchScholarlyWorks>> | FirecrawlSearchResult;
 
 type PassageEvaluationResult = {
   provider: string;
@@ -156,7 +158,7 @@ export type AutomaticCollectionResult = {
   providerFailures: ProviderFailure[];
   blocked: boolean;
   durationMs: number;
-  searchAudits: Array<WorkerAuditResult<Awaited<ReturnType<typeof searchScholarlyWorks>>>>;
+  searchAudits: Array<WorkerAuditResult<SearchProviderResult>>;
   primaryAudits: Array<WorkerAuditResult<PassageEvaluationResult>>;
   triageAudits: Array<WorkerAuditResult<PassageEvaluationResult>>;
   reviewerAudits: Array<WorkerAuditResult<PassageEvaluationResult>>;
@@ -306,6 +308,7 @@ function candidateRecord(candidate: ScholarlyCandidate, plan: PlannedQuery, rank
     rights: { eligible, basis: eligible ? `OpenAlex license signal: ${candidate.license}` : "No eligible explicit license signal" },
     contentScope: { eligible: Boolean(candidate.abstract) || candidate.isOpenAccess, basis: candidate.abstract ? "OpenAlex abstract available" : "Open-access full text reported" },
     metadata: {
+      provider: "openalex",
       canonicalDoi: candidate.canonicalDoi ?? "",
       license: candidate.license ?? "",
       hasAbstract: candidate.hasAbstract,
@@ -316,17 +319,61 @@ function candidateRecord(candidate: ScholarlyCandidate, plan: PlannedQuery, rank
   };
 }
 
+function firecrawlCandidateRecord(candidate: FirecrawlCandidate, plan: PlannedQuery, rank: number): EvidenceCandidate {
+  const abstract = [candidate.description, candidate.markdown?.slice(0, 4_000)].filter(Boolean).join("\n\n");
+  return {
+    id: candidate.id,
+    url: candidate.url,
+    title: candidate.title,
+    abstract: abstract || undefined,
+    query: plan.query,
+    role: plan.intent === "challenge" || plan.intent === "limitation" ? "challenge" : "support",
+    rank,
+    score: 0,
+    publishedAt: candidate.publicationYear ?? undefined,
+    rights: { eligible: candidate.rightsEligible, basis: candidate.rightsEligible ? `Firecrawl page license signal: ${candidate.license}` : "No explicit reusable-content license signal" },
+    contentScope: { eligible: Boolean(candidate.markdown), basis: candidate.markdown ? "Firecrawl returned bounded main-page content" : "No page content returned" },
+    metadata: {
+      provider: "firecrawl",
+      canonicalDoi: candidate.canonicalDoi ?? "",
+      license: candidate.license ?? "",
+      firecrawlCandidate: candidate,
+      associations: [{ claimId: plan.claimId, queryId: plan.id, query: plan.query, intent: plan.intent, anchors: plan.anchors, rank, providerScore: 0 } satisfies CandidateAssociation],
+    },
+  };
+}
+
 function candidateAssociations(candidate: EvidenceCandidate): CandidateAssociation[] {
   const values = Array.isArray(candidate.metadata?.associations) ? candidate.metadata.associations : [];
   return values.filter((value): value is CandidateAssociation => Boolean(value && typeof value === "object" && typeof (value as CandidateAssociation).claimId === "string" && typeof (value as CandidateAssociation).queryId === "string"));
 }
 
+function automaticCandidateIdentity(candidate: EvidenceCandidate): string {
+  const doi = String(candidate.metadata?.canonicalDoi ?? "").trim().toLocaleLowerCase("en-US");
+  if (doi) return `doi:${doi}`;
+  if (candidate.url) {
+    try {
+      const url = new URL(candidate.url);
+      url.hash = "";
+      return `url:${url.toString().toLocaleLowerCase("en-US")}`;
+    } catch {
+      // Fall through to the provider ID.
+    }
+  }
+  return `id:${candidate.id.toLocaleLowerCase("en-US")}`;
+}
+
+function candidateProvider(candidate: EvidenceCandidate): "openalex" | "firecrawl" {
+  return candidate.metadata?.provider === "firecrawl" ? "firecrawl" : "openalex";
+}
+
 function mergeCandidateAssociation(prior: EvidenceCandidate, next: EvidenceCandidate): EvidenceCandidate {
   const associations = [...candidateAssociations(prior), ...candidateAssociations(next)];
   const unique = [...new Map(associations.map((item) => [`${item.claimId}|${item.queryId}`, item])).values()];
+  const preferred = candidateProvider(prior) === "openalex" ? prior : candidateProvider(next) === "openalex" ? next : Number(next.score ?? 0) > Number(prior.score ?? 0) ? next : prior;
   return {
-    ...(Number(next.score ?? 0) > Number(prior.score ?? 0) ? next : prior),
-    metadata: { ...(prior.metadata ?? {}), ...(next.metadata ?? {}), associations: unique },
+    ...preferred,
+    metadata: { ...(preferred.metadata ?? {}), associations: unique },
     rights: prior.rights?.eligible ? prior.rights : next.rights,
     contentScope: prior.contentScope?.eligible ? prior.contentScope : next.contentScope,
   };
@@ -849,16 +896,25 @@ function openAlexSourceId(openAlexId: string): string {
   return `openalex-${openAlexId.replace(/^https:\/\/openalex\.org\//u, "").toLocaleLowerCase("en-US")}`;
 }
 
-function searchAuditFor(audit: WorkerAuditResult<Awaited<ReturnType<typeof searchScholarlyWorks>>>, query: PlannedQuery): SearchAudit {
+function sourceIdForCandidate(candidate: EvidenceCandidate): string {
+  return candidateProvider(candidate) === "firecrawl" ? candidate.id : openAlexSourceId(candidate.id);
+}
+
+function searchCandidateId(candidate: ScholarlyCandidate | FirecrawlCandidate): string {
+  return "openAlexId" in candidate ? candidate.openAlexId : candidate.id;
+}
+
+function searchAuditFor(audit: WorkerAuditResult<SearchProviderResult>, query: PlannedQuery, providerHint: "openalex" | "firecrawl"): SearchAudit {
   const raw = audit.value?.raw;
   const status = raw?.status ?? (audit.status === "timed-out" ? "timed_out" : audit.value ? "completed" : "worker_failed");
   return SearchAuditSchema.parse({
+    provider: audit.value?.provider ?? providerHint,
     queryId: query.id,
     claimId: query.claimId,
     query: query.query,
     status,
     failureCode: raw?.failureCode ?? (audit.status === "timed-out" ? "deadline_exceeded" : audit.value ? null : "provider_unavailable"),
-    candidateIds: audit.value?.candidates.map(({ openAlexId }) => openAlexId).slice(0, 50) ?? [],
+    candidateIds: audit.value?.candidates.map(searchCandidateId).slice(0, 50) ?? [],
     pagesFetched: raw?.pagination?.pagesFetched ?? 0,
     truncated: raw?.pagination?.truncated ?? false,
     round: query.round,
@@ -868,14 +924,14 @@ function searchAuditFor(audit: WorkerAuditResult<Awaited<ReturnType<typeof searc
 function searchFailure(audit: SearchAudit): ProviderFailure | null {
   if (!audit.failureCode) return null;
   const code = audit.failureCode === "rate_limited" ? "rate_limited" : audit.failureCode === "deadline_exceeded" ? "timeout" : audit.failureCode === "invalid_response" || audit.failureCode === "invalid_query" ? "invalid_output" : "provider_error";
-  return ProviderFailureSchema.parse({ stage: "search", provider: "openalex", code, httpStatus: audit.failureCode === "rate_limited" ? 429 : null, attempts: 1, affectedPassages: 0, retryable: ["rate_limited", "deadline_exceeded", "provider_unavailable", "cursor_loop"].includes(audit.failureCode), itemId: audit.queryId, round: audit.round });
+  return ProviderFailureSchema.parse({ stage: "search", provider: audit.provider, code, httpStatus: audit.failureCode === "rate_limited" ? 429 : null, attempts: 1, affectedPassages: 0, retryable: ["rate_limited", "deadline_exceeded", "provider_unavailable", "cursor_loop"].includes(audit.failureCode), itemId: audit.queryId, round: audit.round });
 }
 
 function collectionResult(input: {
   verified: Awaited<ReturnType<typeof verifyAndMerge>>;
   now: () => number;
   startedAt: number;
-  searchPool?: ResearchRunResult<Awaited<ReturnType<typeof searchScholarlyWorks>>>;
+  searchAudits?: Array<WorkerAuditResult<SearchProviderResult>>;
   importPool?: ResearchRunResult<ImportedCandidate>;
   currentCandidates?: EvidenceCandidate[];
 }): AutomaticCollectionResult {
@@ -887,7 +943,7 @@ function collectionResult(input: {
     queries: verification.queries,
     candidatesConsidered: verification.candidatesConsidered,
     selectedCandidateIds: [...selectedSources],
-    skipped: (input.currentCandidates ?? []).filter(({ id }) => !selectedSources.has(openAlexSourceId(id))).map(({ id }) => ({ id, reason: "not-selected" })),
+    skipped: (input.currentCandidates ?? []).filter((candidate) => !selectedSources.has(sourceIdForCandidate(candidate))).map(({ id }) => ({ id, reason: "not-selected" })),
     usableSources: input.verified.draft.sources.length,
     targetSources,
     minimumSources: targetSources,
@@ -903,7 +959,7 @@ function collectionResult(input: {
     providerFailures: verification.providerFailures,
     blocked: verification.status !== "ready",
     durationMs: input.now() - input.startedAt,
-    searchAudits: input.searchPool?.results ?? [],
+    searchAudits: input.searchAudits ?? [],
     primaryAudits: input.verified.primary.all,
     triageAudits: input.verified.primary.all,
     reviewerAudits: input.verified.reviewer.all,
@@ -917,10 +973,12 @@ export async function collectAutomaticResearchPacket(input: {
   mode?: "initial" | "deeper" | "retry_verification";
   config?: Partial<ResearchConfig>;
   openAlexApiKey: string;
+  firecrawlApiKey?: string;
   signal?: AbortSignal;
   fetch?: typeof fetch;
   adapters?: ReturnType<typeof configuredResearchAdapters>;
   search?: typeof searchScholarlyWorks;
+  webSearch?: typeof searchFirecrawl;
   importWork?: typeof importOpenAlexWork;
   now?: () => number;
 }): Promise<AutomaticCollectionResult> {
@@ -970,7 +1028,7 @@ export async function collectAutomaticResearchPacket(input: {
   const sourceDeadlineAt = Math.min(overallDeadlineAt, sourcePhaseStartedAt + config.sourceDeadlineMs);
   const sourceRemaining = () => Math.max(0, sourceDeadlineAt - now());
   const searchItems = roundQueries.map((query) => ({ id: query.id, query }));
-  const searchPool = await runBoundedPool({
+  const openAlexSearchPromise = runBoundedPool({
     items: searchItems,
     config,
     remainingMs: sourceRemaining(),
@@ -983,29 +1041,65 @@ export async function collectAutomaticResearchPacket(input: {
       limits: { maxResults: OPENALEX_RESULTS_PER_QUERY, pageSize: 25, maxPages: OPENALEX_MAX_PAGES, deadlineMs: Math.max(100, Math.min(60_000, context.deadlineAt - now())) },
     }),
   });
-  const planById = new Map(roundQueries.map((query) => [query.id, query]));
-  const currentSearchAudits = searchPool.results.flatMap((audit) => {
-    const query = planById.get(audit.itemId);
-    return query ? [searchAuditFor(audit, query)] : [];
+  const firecrawlItems = input.firecrawlApiKey?.trim() ? searchItems : [];
+  const firecrawlSearchPromise = runBoundedPool({
+    items: firecrawlItems,
+    config,
+    remainingMs: sourceRemaining(),
+    now,
+    signal: input.signal,
+    maxConcurrency: Math.min(2, config.maxConcurrency),
+    worker: async (item, context) => (input.webSearch ?? searchFirecrawl)(item.query.query, {
+      apiKey: input.firecrawlApiKey ?? "",
+      signal: context.signal,
+      maxResults: 12,
+      deadlineMs: Math.max(500, Math.min(60_000, context.deadlineAt - now())),
+    }),
   });
+  const [openAlexSearchPool, firecrawlSearchPool] = await Promise.all([openAlexSearchPromise, firecrawlSearchPromise]);
+  const planById = new Map(roundQueries.map((query) => [query.id, query]));
+  const currentSearchAudits = openAlexSearchPool.results.flatMap((audit) => {
+    const query = planById.get(audit.itemId);
+    return query ? [searchAuditFor(audit, query, "openalex")] : [];
+  }).concat(firecrawlSearchPool.results.flatMap((audit) => {
+    const query = planById.get(audit.itemId);
+    return query ? [searchAuditFor(audit, query, "firecrawl")] : [];
+  }));
   const allSearchAudits = [...(prior?.searchAudits ?? []), ...currentSearchAudits].slice(-30);
   const searchFailures = currentSearchAudits.flatMap((audit) => searchFailure(audit) ?? []);
-  const priorCombinations = new Set((prior?.searchAudits ?? []).flatMap((audit) => audit.candidateIds.map((id) => `${audit.query.trim().toLocaleLowerCase("en-US")}|${id}`)));
+  const priorCombinations = new Set((prior?.searchAudits ?? []).flatMap((audit) => audit.candidateIds.map((id) => `${audit.provider}|${audit.query.trim().toLocaleLowerCase("en-US")}|${id}`)));
   const recordById = new Map<string, EvidenceCandidate>();
   let duplicateCombinations = 0;
-  for (const audit of searchPool.results) {
+  for (const audit of openAlexSearchPool.results) {
     if (!audit.value) continue;
     const plan = planById.get(audit.itemId);
     if (!plan) continue;
     audit.value.candidates.forEach((candidate, index) => {
-      const combination = `${plan.query.trim().toLocaleLowerCase("en-US")}|${candidate.openAlexId}`;
+      const combination = `openalex|${plan.query.trim().toLocaleLowerCase("en-US")}|${candidate.openAlexId}`;
       if (priorCombinations.has(combination)) {
         duplicateCombinations += 1;
         return;
       }
       const record = candidateRecord(candidate, plan, index + 1);
-      const priorRecord = recordById.get(record.id);
-      recordById.set(record.id, priorRecord ? mergeCandidateAssociation(priorRecord, record) : record);
+      const identity = automaticCandidateIdentity(record);
+      const priorRecord = recordById.get(identity);
+      recordById.set(identity, priorRecord ? mergeCandidateAssociation(priorRecord, record) : record);
+    });
+  }
+  for (const audit of firecrawlSearchPool.results) {
+    if (!audit.value) continue;
+    const plan = planById.get(audit.itemId);
+    if (!plan) continue;
+    audit.value.candidates.forEach((candidate, index) => {
+      const combination = `firecrawl|${plan.query.trim().toLocaleLowerCase("en-US")}|${candidate.id}`;
+      if (priorCombinations.has(combination)) {
+        duplicateCombinations += 1;
+        return;
+      }
+      const record = firecrawlCandidateRecord(candidate, plan, index + 1);
+      const identity = automaticCandidateIdentity(record);
+      const priorRecord = recordById.get(identity);
+      recordById.set(identity, priorRecord ? mergeCandidateAssociation(priorRecord, record) : record);
     });
   }
 
@@ -1033,7 +1127,7 @@ export async function collectAutomaticResearchPacket(input: {
   const existingBySource = new Map(currentDraft.sources.map((entry) => [entry.source.id, entry]));
   let remainingNewSources = Math.max(0, MAX_IMPORTED_SOURCES - existingBySource.size);
   const records = ranked.filter((candidate) => {
-    if (existingBySource.has(openAlexSourceId(candidate.id))) return true;
+    if (existingBySource.has(sourceIdForCandidate(candidate))) return true;
     if (remainingNewSources <= 0) return false;
     remainingNewSources -= 1;
     return true;
@@ -1047,10 +1141,17 @@ export async function collectAutomaticResearchPacket(input: {
     signal: input.signal,
     worker: async (item) => {
       const candidate = item.query;
-      const existing = existingBySource.get(openAlexSourceId(candidate.id));
+      const existing = existingBySource.get(sourceIdForCandidate(candidate));
       if (existing) return { candidate, imported: { source: existing.source, chunks: existing.chunks, warnings: ["Reused previously imported source"] } };
       const relevantClaims = [...new Set(candidateAssociations(candidate).map(({ claimId }) => claimId))];
       const claims = input.run.claims.filter(({ id }) => relevantClaims.includes(id)).map(({ statement }) => statement);
+      if (candidateProvider(candidate) === "firecrawl") {
+        const webCandidate = candidate.metadata?.firecrawlCandidate as FirecrawlCandidate | undefined;
+        if (!webCandidate) throw new Error("Firecrawl candidate metadata was unavailable at import");
+        const result = importFirecrawlCandidate({ candidate: webCandidate, claims });
+        if (result.chunks.length === 0) throw new Error("Selected Firecrawl source did not yield a licensed claim-overlapping passage");
+        return { candidate, imported: result };
+      }
       const license = String(candidate.metadata?.license ?? "");
       const result = await (input.importWork ?? importOpenAlexWork)({
         openAlexId: candidate.id,
@@ -1064,7 +1165,8 @@ export async function collectAutomaticResearchPacket(input: {
   counts.noPermittedText += importPool.results.filter((audit) => !audit.value && audit.signal !== "timeout" && audit.signal !== "429" && audit.signal !== "5xx").length;
   const importFailures = importPool.results.flatMap((audit) => {
     if (audit.value || !["timeout", "429", "5xx"].includes(audit.signal ?? "")) return [];
-    return [ProviderFailureSchema.parse({ stage: "import", provider: "openalex", code: audit.signal === "429" ? "rate_limited" : audit.signal === "timeout" ? "timeout" : "provider_error", httpStatus: audit.signal === "429" ? 429 : null, attempts: 1, affectedPassages: 0, retryable: true, itemId: audit.itemId, round: (prior?.verificationAttempt ?? 0) + 1 })];
+    const failedCandidate = records.find(({ id }) => id === audit.itemId);
+    return [ProviderFailureSchema.parse({ stage: "import", provider: failedCandidate ? candidateProvider(failedCandidate) : "openalex", code: audit.signal === "429" ? "rate_limited" : audit.signal === "timeout" ? "timeout" : "provider_error", httpStatus: audit.signal === "429" ? 429 : null, attempts: 1, affectedPassages: 0, retryable: true, itemId: audit.itemId, round: (prior?.verificationAttempt ?? 0) + 1 })];
   });
   const addedEntries = importPool.results.flatMap((audit) => audit.value ? [{ source: audit.value.imported.source, chunks: audit.value.imported.chunks, importedAt: new Date(audit.finishedAt).toISOString() }] : []);
   const entries = mergeDraftEntries(currentDraft.sources, addedEntries);
@@ -1091,5 +1193,5 @@ export async function collectAutomaticResearchPacket(input: {
     remainingMs: overallRemaining,
     now,
   });
-  return collectionResult({ verified, now, startedAt, searchPool, importPool, currentCandidates: [...recordById.values()] });
+  return collectionResult({ verified, now, startedAt, searchAudits: [...openAlexSearchPool.results, ...firecrawlSearchPool.results], importPool, currentCandidates: [...recordById.values()] });
 }

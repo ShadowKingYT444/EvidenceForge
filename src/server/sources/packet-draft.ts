@@ -75,6 +75,7 @@ export const ProviderFailureSchema = z.object({
 }).strict();
 
 export const SearchAuditSchema = z.object({
+  provider: z.enum(["openalex", "firecrawl"]).default("openalex"),
   queryId: z.string().min(1),
   claimId: z.string().min(1),
   query: z.string().min(1),

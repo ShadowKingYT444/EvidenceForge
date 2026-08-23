@@ -5,6 +5,7 @@ import { canonicalSha256 } from "../../contracts";
 import { extractRunToken } from "../auth/run-token";
 import { getDurableRunCoordinator, RunAccessDeniedError } from "../workflow/durable-coordinator";
 import { liveRouteError } from "../workflow/live-http";
+import { searchFirecrawl } from "./firecrawl";
 import { importOpenAlexWork, createPastedSource } from "./import-service";
 import { extractPdfText } from "./pdf";
 import { searchScholarlyWorks } from "./openalex";
@@ -38,9 +39,25 @@ export async function searchRunSources(request: Request, context: Context): Prom
     const query = new URL(request.url).searchParams.get("query") ?? "";
     const parsed = OpenAlexSearchRequestSchema.parse({ query, maxResults: 10 });
     const apiKey = process.env.OPENALEX_API_KEY?.trim();
-    const result = await searchScholarlyWorks(parsed.query, { apiKey, limits: { maxResults: parsed.maxResults, pageSize: parsed.maxResults, maxPages: 2 } });
+    const firecrawlApiKey = process.env.FIRECRAWL_API_KEY?.trim();
+    const [result, web] = await Promise.all([
+      searchScholarlyWorks(parsed.query, { apiKey, limits: { maxResults: parsed.maxResults, pageSize: parsed.maxResults, maxPages: 2 } }),
+      firecrawlApiKey ? searchFirecrawl(parsed.query, { apiKey: firecrawlApiKey, maxResults: parsed.maxResults, deadlineMs: 20_000, signal: request.signal }) : Promise.resolve(null),
+    ]);
     return Response.json(
-      { provider: "openalex", query: result.query, candidates: result.candidates, providerStatus: result.raw.status, failureCode: result.raw.failureCode, partial: result.raw.status === "partial" },
+      {
+        provider: "openalex",
+        query: result.query,
+        candidates: result.candidates,
+        providerStatus: result.raw.status,
+        failureCode: result.raw.failureCode,
+        partial: result.raw.status === "partial",
+        webCandidates: web?.candidates.map((candidate) => ({ id: candidate.id, url: candidate.url, title: candidate.title, description: candidate.description, category: candidate.category, license: candidate.license, canonicalDoi: candidate.canonicalDoi, authors: candidate.authors, publicationYear: candidate.publicationYear, rightsEligible: candidate.rightsEligible })) ?? [],
+        providers: {
+          openalex: { status: result.raw.status, failureCode: result.raw.failureCode },
+          firecrawl: web ? { status: web.raw.status, failureCode: web.raw.failureCode } : { status: "not_configured", failureCode: null },
+        },
+      },
       { headers: { "cache-control": "private, no-store" } },
     );
   } catch (error) {
@@ -56,6 +73,7 @@ export async function autoCollectRunSources(request: Request, context: Context):
     observedRunId = access.runId;
     const body = AutomaticCollectionRequestSchema.parse(await json(request));
     const apiKey = process.env.OPENALEX_API_KEY?.trim();
+    const firecrawlApiKey = process.env.FIRECRAWL_API_KEY?.trim();
     if (access.snapshot.run.status !== "collecting_sources") {
       throw new Error("Automatic collection requires approved scope and the collecting_sources phase.");
     }
@@ -65,6 +83,7 @@ export async function autoCollectRunSources(request: Request, context: Context):
       mode: body.mode,
       config: body.config,
       openAlexApiKey: apiKey ?? "",
+      firecrawlApiKey,
       signal: request.signal,
     });
     const saved = await access.coordinator.savePacketDraft(
@@ -109,6 +128,7 @@ export async function autoCollectRunSources(request: Request, context: Context):
         durationMs: collected.durationMs,
         searchWorkers: collected.searchAudits.map(({ itemId, status, durationMs, signal, error, value }) => ({
           itemId,
+          provider: value?.provider ?? null,
           status,
           durationMs: durationMs ?? null,
           signal: signal ?? null,
