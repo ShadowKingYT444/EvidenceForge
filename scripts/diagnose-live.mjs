@@ -3,7 +3,7 @@ import { existsSync, readFileSync } from "node:fs";
 if (existsSync(".env")) {
   for (const line of readFileSync(".env", "utf8").split(/\r?\n/u)) {
     const match = line.match(/^([A-Z][A-Z0-9_]*)=(.*)$/u);
-    if (!match || process.env[match[1]] !== undefined) continue;
+    if (!match) continue;
     const raw = match[2].trim();
     process.env[match[1]] = raw.length >= 2 && raw[0] === raw.at(-1) && (raw[0] === '"' || raw[0] === "'")
       ? raw.slice(1, -1)
