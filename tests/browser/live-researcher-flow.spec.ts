@@ -7,11 +7,12 @@ test("opens a focused research composer without marketing clutter", async ({ pag
   });
 
   await page.goto("/");
-  await expect(page.getByRole("heading", { name: /What should we test/i })).toBeVisible();
+  await expect(page.getByRole("heading", { name: /Test a claim against the evidence/i })).toBeVisible();
   await expect(page.getByLabel("Research question")).toBeVisible();
   await expect(page.getByLabel("Decision this will inform")).toBeVisible();
   await expect(page.getByText("Add boundaries")).toBeVisible();
   await expect(page.getByRole("button", { name: /Try the demo/i })).toBeVisible();
+  await expect(page.getByLabel("Prompt examples").getByRole("button")).toHaveCount(3);
   expect(errors).toEqual([]);
 });
 
