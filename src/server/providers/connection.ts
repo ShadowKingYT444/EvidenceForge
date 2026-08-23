@@ -29,9 +29,10 @@ const inputSchema = z.object({
 
 export type ConnectionInput = z.infer<typeof inputSchema>;
 type ConnectionErrorCode = "invalid_request" | "provider_failure" | "timeout" | "invalid_response" | "rate_limited";
+export type ConnectionCategory = "success" | "configuration" | "http_4xx" | "http_5xx" | "rate_limited" | "timeout" | "invalid_response" | "network_error";
 export type ConnectionResult =
-  | { ok: true; provider: ProviderId; model: string; latencyMs: number; evidenceMode: "live" }
-  | { ok: false; error: { code: ConnectionErrorCode; message: string }; evidenceMode: "live" };
+  | { ok: true; provider: ProviderId; model: string; latencyMs: number; category: "success"; evidenceMode: "live" }
+  | { ok: false; error: { code: ConnectionErrorCode; message: string; category: ConnectionCategory }; evidenceMode: "live" };
 
 export function createConnectionRequest(value: unknown): ConnectionInput {
   return inputSchema.parse(value);
@@ -55,8 +56,8 @@ export function resetConnectionRateLimitForTests(): void {
   rateBuckets.clear();
 }
 
-function sanitized(code: ConnectionErrorCode, message: string): ConnectionResult {
-  return { ok: false, error: { code, message }, evidenceMode: "live" };
+function sanitized(code: ConnectionErrorCode, message: string, category: ConnectionCategory): ConnectionResult {
+  return { ok: false, error: { code, message, category }, evidenceMode: "live" };
 }
 
 function bodyFor(provider: ProviderId, model: string): Record<string, unknown> {
@@ -119,7 +120,7 @@ export async function verifyProviderConnection(
   try {
     request = createConnectionRequest(value);
   } catch {
-    return sanitized("invalid_request", "Check the provider, model ID, and API key.");
+    return sanitized("invalid_request", "Check the provider, model ID, and API key.", "configuration");
   }
 
   const now = deps.now ?? Date.now;
@@ -127,7 +128,7 @@ export async function verifyProviderConnection(
   const current = now();
   const bucket = rateBuckets.get(rateKey);
   if (bucket && current - bucket.startedAt < RATE_WINDOW_MS && bucket.count >= RATE_LIMIT) {
-    return sanitized("rate_limited", "Too many connection checks. Try again shortly.");
+    return sanitized("rate_limited", "Too many connection checks. Try again shortly.", "rate_limited");
   }
   if (!bucket || current - bucket.startedAt >= RATE_WINDOW_MS) rateBuckets.set(rateKey, { startedAt: current, count: 1 });
   else bucket.count += 1;
@@ -145,21 +146,23 @@ export async function verifyProviderConnection(
       signal: controller.signal,
     });
     const length = response.headers.get("content-length");
-    if (length && Number(length) > MAX_BODY_BYTES) return sanitized("invalid_response", "The provider response was too large.");
+    if (length && Number(length) > MAX_BODY_BYTES) return sanitized("invalid_response", "The provider response was too large.", "invalid_response");
     const bounded = await readBoundedBody(response);
-    if (bounded.tooLarge) return sanitized("invalid_response", "The provider response was too large.");
+    if (bounded.tooLarge) return sanitized("invalid_response", "The provider response was too large.", "invalid_response");
     const body = bounded.body;
-    if (!response.ok) return sanitized("provider_failure", "The provider rejected this connection.");
+    if (!response.ok) return response.status === 429
+      ? sanitized("rate_limited", "The provider rate limited this connection.", "rate_limited")
+      : sanitized("provider_failure", "The provider rejected this connection.", response.status >= 500 ? "http_5xx" : "http_4xx");
     try {
       const parsed = JSON.parse(body) as unknown;
-      if (!hasExpectedShape(request.provider, parsed)) return sanitized("invalid_response", "The provider returned an invalid response.");
+      if (!hasExpectedShape(request.provider, parsed)) return sanitized("invalid_response", "The provider returned an invalid response.", "invalid_response");
     } catch {
-      return sanitized("invalid_response", "The provider returned an invalid response.");
+      return sanitized("invalid_response", "The provider returned an invalid response.", "invalid_response");
     }
-    return { ok: true, provider: request.provider, model: request.model, latencyMs: Math.max(0, now() - started), evidenceMode: "live" };
+    return { ok: true, provider: request.provider, model: request.model, latencyMs: Math.max(0, now() - started), category: "success", evidenceMode: "live" };
   } catch (error) {
-    if (isAbort(error)) return sanitized("timeout", "The provider did not respond in time.");
-    return sanitized("provider_failure", "The provider connection could not be completed.");
+    if (isAbort(error)) return sanitized("timeout", "The provider did not respond in time.", "timeout");
+    return sanitized("provider_failure", "The provider connection could not be completed.", "network_error");
   } finally {
     clearTimeout(timeout);
   }

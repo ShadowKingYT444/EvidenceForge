@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { canonicalSha256, NodeExecutionSchema, RunErrorSchema, type ResearchRun } from "../../src/contracts";
 import { goldenRunV02 } from "../../src/fixtures/golden-run-v0.2";
 import type { StructuredGenerationAdapter, StructuredGenerationRequest } from "../../src/server/models";
-import { collectAutomaticResearchPacket } from "../../src/server/research/live-collection";
+import { MODEL_BATCH_MAX_ITEMS, collectAutomaticResearchPacket } from "../../src/server/research/live-collection";
 import type { ScholarlyCandidate } from "../../src/server/sources/openalex";
 
 function candidate(id: number, input: Partial<ScholarlyCandidate> = {}): ScholarlyCandidate {
@@ -145,7 +145,7 @@ function failingAdapter(provider: TestProvider, httpStatus = 429): StructuredGen
   } as StructuredGenerationAdapter;
 }
 
-function automaticDependencies() {
+function automaticDependencies(candidatesPerQuery = 5) {
   let searchIndex = 0;
   const queryByWork = new Map<string, string>();
   return {
@@ -157,7 +157,7 @@ function automaticDependencies() {
         candidate(offset + 3, { title: `${query} biodegradable battery environmental sensor study three`, abstract: `${query} direct bounded evidence for a biodegradable battery environmental sensor.` }),
         candidate(offset + 4, { title: `${query} biodegradable battery environmental sensor study four`, abstract: `${query} direct bounded evidence for a biodegradable battery environmental sensor.` }),
         candidate(offset + 5, { title: `${query} biodegradable battery environmental sensor study five`, abstract: `${query} direct bounded evidence for a biodegradable battery environmental sensor.` }),
-      ];
+      ].slice(0, candidatesPerQuery);
       for (const work of candidates) queryByWork.set(work.openAlexId, query);
       return { provider: "openalex" as const, query, candidates, raw: {} as never };
     },
@@ -170,7 +170,7 @@ function automaticDependencies() {
         `A second independent passage about ${query} reports the observed mechanism and preserves the study limitations.`,
       ];
       return {
-        source: { ...baseSource, id: sourceId, contentHash: canonicalSha256(texts.join("\n\n")), bibliographicMetadata: { ...baseSource.bibliographicMetadata, title: `${query} evidence paper` }, access: { ...baseSource.access, contentScope: "abstract" as const }, rights: { ...baseSource.rights, mayStore: "allowed" as const, mayDisplay: "allowed" as const, maySendToModel: "allowed" as const } },
+        source: { ...baseSource, id: sourceId, contentHash: canonicalSha256(texts.join("\n\n")), bibliographicMetadata: { ...baseSource.bibliographicMetadata, title: `${query} evidence paper ${openAlexId}` }, access: { ...baseSource.access, contentScope: "abstract" as const }, rights: { ...baseSource.rights, mayStore: "allowed" as const, mayDisplay: "allowed" as const, maySendToModel: "allowed" as const } },
         chunks: texts.map((text, index) => ({ ...structuredClone(goldenRunV02.chunks[0]!), id: `${sourceId}-chunk-${index + 1}`, sourceId, text, contentHash: canonicalSha256(text), displayPermission: "allowed" as const })),
         warnings: ["Abstract-scoped test source"],
       };
@@ -266,7 +266,7 @@ describe("automatic research collection", () => {
     expect(result.draft.verification?.status).toBe("evidence_shortfall");
   });
 
-  it("uses NVIDIA for admission and Groq once as the independent reviewer", async () => {
+  it("uses the configured primary for admission and NVIDIA as the independent reviewer", async () => {
     const dependencies = automaticDependencies();
     const run = focusedRun();
     const result = await collectAutomaticResearchPacket({
@@ -278,7 +278,7 @@ describe("automatic research collection", () => {
     });
     expect(result.status).toBe("ready");
     expect(result.providerFailures).toEqual([]);
-    expect(result.draft.verification?.passages.every(({ primary, reviewer }) => primary.provider === "nvidia_nim" && reviewer.provider === "groq")).toBe(true);
+    expect(result.draft.verification?.passages.every(({ primary, reviewer }) => primary.provider === "groq" && reviewer.provider === "nvidia_nim")).toBe(true);
   });
 
   it("retries saved passages without repeating search or import work", async () => {
@@ -294,7 +294,7 @@ describe("automatic research collection", () => {
     expect(first.status).toBe("provider_unavailable");
     expect(first.pendingPassages).toBeGreaterThan(0);
     expect(first.rejectionCounts.primaryRejected).toBe(0);
-    expect(first.providerFailures.every(({ stage }) => stage === "review")).toBe(true);
+    expect(first.providerFailures.every(({ stage }) => stage === "primary_admission")).toBe(true);
 
     const retried = await collectAutomaticResearchPacket({
       run,
@@ -306,9 +306,305 @@ describe("automatic research collection", () => {
       importWork: async () => { throw new Error("retry_verification must not import"); },
     });
     expect(retried.status).toBe("ready");
-    expect(retried.providerFailures).toEqual([]);
+    expect(retried.providerFailures.length).toBeGreaterThan(0);
+    expect(retried.draft.verification?.status).toBe("ready");
     expect(retried.searchAudits).toEqual([]);
     expect(retried.importAudits).toEqual([]);
     expect(retried.draft.verification?.verificationAttempt).toBe(2);
+  });
+
+  it("preserves prior verified passages during deeper search and can become ready", async () => {
+    const dependencies = automaticDependencies(2);
+    const run = focusedRun();
+    const first = await collectAutomaticResearchPacket({
+      run,
+      currentDraft: { sources: [] },
+      openAlexApiKey: "test-key",
+      adapters: { primary: adapter("groq"), reviewer: adapter("nvidia_nim"), fallback: null, evidenceMode: "live" },
+      ...dependencies,
+    });
+    expect(first.status).toBe("evidence_shortfall");
+    expect(first.verifiedPassages).toBe(8);
+    const priorIds = new Set(first.draft.verification?.passages.map(({ id }) => id));
+
+    const deeper = await collectAutomaticResearchPacket({
+      run,
+      currentDraft: first.draft,
+      mode: "deeper",
+      openAlexApiKey: "test-key",
+      adapters: { primary: adapter("groq"), reviewer: adapter("nvidia_nim"), fallback: null, evidenceMode: "live" },
+      ...dependencies,
+    });
+    expect(deeper.status).toBe("ready");
+    expect(deeper.verifiedPassages).toBe(10);
+    expect(deeper.candidatesConsidered).toBeGreaterThanOrEqual(first.candidatesConsidered);
+    expect([...priorIds].every((id) => deeper.draft.verification?.passages.some((passage) => passage.id === id))).toBe(true);
+    expect(deeper.draft.verification?.verificationAttempt).toBe(2);
+  });
+
+  it("preserves successful batches across a partial provider failure and retry", async () => {
+    const dependencies = automaticDependencies(2);
+    const run = focusedRun();
+    const baseReviewer = adapter("nvidia_nim");
+    const failedReviewer = failingAdapter("nvidia_nim");
+    const selectiveReviewer: StructuredGenerationAdapter = {
+      ...baseReviewer,
+      async generate(request) {
+        if (request.promptId === "dual-evidence-admission-review") {
+          const payload = JSON.parse(request.messages.at(-1)!.content) as { passages: Array<{ sourceTitle: string }> };
+          if (payload.passages.some(({ sourceTitle }) => /W22/u.test(sourceTitle))) return failedReviewer.generate(request);
+        }
+        return baseReviewer.generate(request);
+      },
+    };
+    const first = await collectAutomaticResearchPacket({
+      run,
+      currentDraft: { sources: [] },
+      openAlexApiKey: "test-key",
+      adapters: { primary: adapter("groq"), reviewer: selectiveReviewer, fallback: null, evidenceMode: "live" },
+      ...dependencies,
+    });
+    expect(first.verifiedPassages).toBeGreaterThan(0);
+    expect(first.pendingPassages).toBeGreaterThan(0);
+    const preserved = new Set(first.draft.verification?.passages.map(({ id }) => id));
+
+    const retried = await collectAutomaticResearchPacket({
+      run,
+      currentDraft: first.draft,
+      mode: "retry_verification",
+      openAlexApiKey: "test-key",
+      adapters: { primary: adapter("groq"), reviewer: adapter("nvidia_nim"), fallback: null, evidenceMode: "live" },
+    });
+    expect([...preserved].every((id) => retried.draft.verification?.passages.some((passage) => passage.id === id))).toBe(true);
+    expect(retried.verifiedPassages).toBeGreaterThanOrEqual(first.verifiedPassages);
+  });
+
+  it("does not let a failed extra batch block ten already verified passages", async () => {
+    const dependencies = automaticDependencies();
+    const run = focusedRun();
+    const baseReviewer = adapter("nvidia_nim");
+    const failedReviewer = failingAdapter("nvidia_nim");
+    const selectiveReviewer: StructuredGenerationAdapter = {
+      ...baseReviewer,
+      async generate(request) {
+        if (request.promptId === "dual-evidence-admission-review") {
+          const payload = JSON.parse(request.messages.at(-1)!.content) as { passages: Array<{ sourceTitle: string }> };
+          if (payload.passages.some(({ sourceTitle }) => /W25/u.test(sourceTitle))) return failedReviewer.generate(request);
+        }
+        return baseReviewer.generate(request);
+      },
+    };
+    const result = await collectAutomaticResearchPacket({
+      run,
+      currentDraft: { sources: [] },
+      openAlexApiKey: "test-key",
+      adapters: { primary: adapter("groq"), reviewer: selectiveReviewer, fallback: null, evidenceMode: "live" },
+      ...dependencies,
+    });
+    expect(result.verifiedPassages).toBe(10);
+    expect(result.status).toBe("ready");
+    expect(result.providerFailures.length).toBeGreaterThan(0);
+  });
+
+  it("retains selected and pending chunks from the same source", async () => {
+    const run = focusedRun();
+    const baseReviewer = adapter("nvidia_nim");
+    const failedReviewer = failingAdapter("nvidia_nim");
+    const selectiveReviewer: StructuredGenerationAdapter = {
+      ...baseReviewer,
+      async generate(request) {
+        if (request.promptId === "dual-evidence-admission-review") {
+          const payload = JSON.parse(request.messages.at(-1)!.content) as { passages: Array<{ excerpt: string }> };
+          if (payload.passages.some(({ excerpt }) => excerpt.includes("second unresolved"))) return failedReviewer.generate(request);
+        }
+        return baseReviewer.generate(request);
+      },
+    };
+    const result = await collectAutomaticResearchPacket({
+      run,
+      currentDraft: { sources: [] },
+      openAlexApiKey: "test-key",
+      adapters: { primary: adapter("groq"), reviewer: selectiveReviewer, fallback: null, evidenceMode: "live" },
+      search: async (query) => ({ provider: "openalex", query, candidates: [candidate(1, { title: `${query} direct study`, abstract: `${query} direct bounded evidence` })], raw: {} as never }),
+      importWork: async ({ openAlexId }) => {
+        const sourceId = `openalex-${openAlexId.toLowerCase()}`;
+        const baseSource = structuredClone(goldenRunV02.sources[0]!);
+        const texts = [
+          "This first controlled passage reports claim evidence in a bounded empirical setting.",
+          "This second unresolved passage reports claim evidence and a separate bounded outcome.",
+        ];
+        return { source: { ...baseSource, id: sourceId, contentHash: canonicalSha256(texts.join("\n\n")), rights: { ...baseSource.rights, mayStore: "allowed", mayDisplay: "allowed", maySendToModel: "allowed" } }, chunks: texts.map((text, index) => ({ ...structuredClone(goldenRunV02.chunks[0]!), id: `${sourceId}-stable-${index}`, sourceId, text, contentHash: canonicalSha256(text), displayPermission: "allowed" as const })), warnings: [] };
+      },
+    });
+    expect(result.status).toBe("provider_unavailable");
+    expect(result.draft.sources).toHaveLength(1);
+    expect(result.draft.sources[0]?.chunks).toHaveLength(2);
+    expect(result.draft.verification?.passages).toHaveLength(1);
+    expect(result.draft.verification?.pendingPassages).toHaveLength(1);
+  });
+
+  it("attributes distinct passages from one work to two claims", async () => {
+    const run = liveRun();
+    run.claims = [
+      { ...run.claims[0]!, id: "claim-storage", statement: "Biodegradable batteries reduce persistent storage waste.", operationalDefinition: "Lower persistent material after disposal." },
+      { ...run.claims[0]!, id: "claim-sensor", statement: "Environmental sensors retain reliable field measurements.", operationalDefinition: "Stable measurement accuracy in field deployment." },
+    ];
+    const result = await collectAutomaticResearchPacket({
+      run,
+      currentDraft: { sources: [] },
+      openAlexApiKey: "test-key",
+      adapters: { primary: adapter("groq"), reviewer: adapter("nvidia_nim"), fallback: null, evidenceMode: "live" },
+      search: async (query) => ({ provider: "openalex", query, candidates: [candidate(77, { title: `${query} biodegradable battery environmental sensor`, abstract: `${query} storage waste and reliable field measurement evidence` })], raw: {} as never }),
+      importWork: async ({ openAlexId }) => {
+        const sourceId = `openalex-${openAlexId.toLowerCase()}`;
+        const baseSource = structuredClone(goldenRunV02.sources[0]!);
+        const texts = [
+          "Biodegradable battery materials reduced persistent storage waste after disposal in the reported evaluation.",
+          "Environmental sensors retained reliable field measurement accuracy throughout the reported deployment.",
+        ];
+        return { source: { ...baseSource, id: sourceId, contentHash: canonicalSha256(texts.join("\n\n")), rights: { ...baseSource.rights, mayStore: "allowed", mayDisplay: "allowed", maySendToModel: "allowed" } }, chunks: texts.map((text, index) => ({ ...structuredClone(goldenRunV02.chunks[0]!), id: `${sourceId}-distinct-${index}`, sourceId, text, contentHash: canonicalSha256(text), displayPermission: "allowed" as const })), warnings: [] };
+      },
+    });
+    expect(new Set(result.draft.verification?.passages.map(({ subclaimId }) => subclaimId))).toEqual(new Set(["claim-storage", "claim-sensor"]));
+    expect(result.draft.sources).toHaveLength(1);
+  });
+
+  it("allows a relevant paraphrase through deterministic triage", async () => {
+    const run = liveRun();
+    run.intake.originalQuestion = "Does reward hacking cause agents to optimize proxy rewards instead of intended objectives?";
+    run.claims = [{ ...run.claims[0]!, statement: "Reward hacking causes agents to optimize proxy rewards instead of intended objectives.", operationalDefinition: "Agents exploit proxy feedback while intended goal performance degrades." }];
+    const result = await collectAutomaticResearchPacket({
+      run,
+      currentDraft: { sources: [] },
+      openAlexApiKey: "test-key",
+      adapters: { primary: adapter("groq"), reviewer: adapter("nvidia_nim"), fallback: null, evidenceMode: "live" },
+      search: async (query) => ({ provider: "openalex", query, candidates: [candidate(90, { title: "Agents exploit proxy feedback and fail intended goals", abstract: "Policies maximize surrogate feedback while performance on the intended objective degrades." })], raw: {} as never }),
+      importWork: async ({ openAlexId }) => {
+        const sourceId = `openalex-${openAlexId.toLowerCase()}`;
+        const text = "Agents exploit proxy feedback and maximize surrogate signals while performance on the intended objective degrades.";
+        const baseSource = structuredClone(goldenRunV02.sources[0]!);
+        return { source: { ...baseSource, id: sourceId, contentHash: canonicalSha256(text), rights: { ...baseSource.rights, mayStore: "allowed", mayDisplay: "allowed", maySendToModel: "allowed" } }, chunks: [{ ...structuredClone(goldenRunV02.chunks[0]!), id: `${sourceId}-paraphrase`, sourceId, text, contentHash: canonicalSha256(text), displayPermission: "allowed" as const }], warnings: [] };
+      },
+    });
+    expect(result.draft.sources).toHaveLength(1);
+    expect(result.rejectionCounts.offTopic).toBe(0);
+  });
+
+  it("reports raw OpenAlex failure as provider_unavailable but valid empty results as a shortfall", async () => {
+    const run = focusedRun();
+    const failed = await collectAutomaticResearchPacket({
+      run,
+      currentDraft: { sources: [] },
+      openAlexApiKey: "test-key",
+      adapters: { primary: adapter("groq"), reviewer: adapter("nvidia_nim"), fallback: null, evidenceMode: "live" },
+      search: async (query) => ({ provider: "openalex", query, candidates: [], raw: { status: "failed", failureCode: "rate_limited", pagination: { pagesFetched: 0, truncated: true } } as never }),
+    });
+    expect(failed.status).toBe("provider_unavailable");
+    expect(failed.providerFailures.some(({ stage, code }) => stage === "search" && code === "rate_limited")).toBe(true);
+
+    const empty = await collectAutomaticResearchPacket({
+      run,
+      currentDraft: { sources: [] },
+      openAlexApiKey: "test-key",
+      adapters: { primary: adapter("groq"), reviewer: adapter("nvidia_nim"), fallback: null, evidenceMode: "live" },
+      search: async (query) => ({ provider: "openalex", query, candidates: [], raw: { status: "completed", failureCode: null, pagination: { pagesFetched: 1, truncated: false } } as never }),
+    });
+    expect(empty.status).toBe("evidence_shortfall");
+  });
+
+  it("splits reviewer requests by the bounded item budget", async () => {
+    const dependencies = automaticDependencies();
+    const run = focusedRun();
+    const observed: number[] = [];
+    const reviewer = adapter("nvidia_nim");
+    const observingReviewer: StructuredGenerationAdapter = {
+      ...reviewer,
+      async generate(request) {
+        if (request.promptId === "dual-evidence-admission-review") {
+          const payload = JSON.parse(request.messages.at(-1)!.content) as { passages: unknown[] };
+          observed.push(payload.passages.length);
+        }
+        return reviewer.generate(request);
+      },
+    };
+    await collectAutomaticResearchPacket({ run, currentDraft: { sources: [] }, openAlexApiKey: "test-key", adapters: { primary: adapter("groq"), reviewer: observingReviewer, fallback: null, evidenceMode: "live" }, ...dependencies });
+    expect(observed.length).toBeGreaterThan(1);
+    expect(Math.max(...observed)).toBeLessThanOrEqual(MODEL_BATCH_MAX_ITEMS);
+  });
+
+  it("keeps source and overall deadlines separate", async () => {
+    const dependencies = automaticDependencies();
+    const run = focusedRun();
+    const observedSourceDeadlines: number[] = [];
+    const result = await collectAutomaticResearchPacket({
+      run,
+      currentDraft: { sources: [] },
+      openAlexApiKey: "test-key",
+      config: { sourceDeadlineMs: 1_000, deadlineMs: 30_000, perItemTimeoutMs: 10_000 },
+      adapters: { primary: adapter("groq"), reviewer: adapter("nvidia_nim"), fallback: null, evidenceMode: "live" },
+      ...dependencies,
+      search: async (query, options) => {
+        observedSourceDeadlines.push(options.limits?.deadlineMs ?? 0);
+        return dependencies.search(query);
+      },
+    });
+    expect(Math.max(...observedSourceDeadlines)).toBeLessThanOrEqual(1_000);
+    expect(result.primaryAudits.length).toBeGreaterThan(0);
+  });
+
+  it("accepts technical evidence without fabricating a sample", async () => {
+    const dependencies = automaticDependencies(1);
+    const run = focusedRun();
+    const technical = (provider: TestProvider): StructuredGenerationAdapter => {
+      const base = adapter(provider);
+      return {
+        ...base,
+        async generate(request) {
+          if (request.promptId === "autonomous-evidence-query-plan") return base.generate(request);
+          const payload = JSON.parse(request.messages.at(-1)!.content) as { passages: Array<{ proposalId: string; proposedClaimId: string }> };
+          const value = request.outputSchema.parse({ reviews: payload.passages.map((passage) => ({ proposalId: passage.proposalId, accepted: true, matchedClaimId: passage.proposedClaimId, likelyRole: "support", relevance: 0.96, directness: 0.94, extractedResult: "The technical analysis establishes the bounded mechanism.", sourceType: "technical", settingAndSample: null, studyType: "technical analysis", limitation: "No empirical population is claimed.", extractionIssues: [], reason: "Direct technical evidence." })) });
+          return { ok: true as const, value, attempts: [execution(request, provider)], errors: [] } as never;
+        },
+      };
+    };
+    const result = await collectAutomaticResearchPacket({ run, currentDraft: { sources: [] }, openAlexApiKey: "test-key", adapters: { primary: technical("groq"), reviewer: technical("nvidia_nim"), fallback: null, evidenceMode: "live" }, ...dependencies });
+    expect(result.draft.verification?.passages.length).toBeGreaterThan(0);
+    expect(result.draft.verification?.passages.every(({ sourceType, settingAndSample }) => sourceType === "technical" && settingAndSample === null)).toBe(true);
+  });
+
+  it("uses licensed Firecrawl results alongside valid-empty OpenAlex discovery", async () => {
+    const run = focusedRun();
+    const result = await collectAutomaticResearchPacket({
+      run,
+      currentDraft: { sources: [] },
+      openAlexApiKey: "openalex-test",
+      firecrawlApiKey: "firecrawl-test",
+      adapters: { primary: adapter("groq"), reviewer: adapter("nvidia_nim"), fallback: null, evidenceMode: "live" },
+      search: async (query) => ({ provider: "openalex", query, candidates: [], raw: { status: "completed", failureCode: null, pagination: { pagesFetched: 1, truncated: false } } as never }),
+      webSearch: async (query) => ({
+        provider: "firecrawl",
+        query,
+        candidates: [{ id: "firecrawl-licensed-source", url: "https://research.example/licensed", title: `${query} licensed technical report`, description: `${query} direct evidence`, markdown: `This licensed report directly evaluates ${query} and reports a bounded outcome.\n\nA second licensed passage explains the mechanism for ${query} and its limitations.`, category: "research", license: "CC BY 4.0", canonicalDoi: null, authors: ["Researcher"], publicationYear: 2025, rightsEligible: true }],
+        raw: { status: "completed", failureCode: null, httpStatus: 200, pagination: { pagesFetched: 1, truncated: false } },
+      }),
+    });
+    expect(result.draft.sources).toEqual([expect.objectContaining({ source: expect.objectContaining({ id: "firecrawl-licensed-source", access: expect.objectContaining({ provider: "firecrawl" }) }) })]);
+    expect(result.draft.verification?.passages.length).toBeGreaterThan(0);
+    expect(result.draft.verification?.searchAudits.some(({ provider }) => provider === "firecrawl")).toBe(true);
+  });
+
+  it("surfaces Firecrawl provider failure without relabeling valid-empty OpenAlex as a shortfall", async () => {
+    const run = focusedRun();
+    const result = await collectAutomaticResearchPacket({
+      run,
+      currentDraft: { sources: [] },
+      openAlexApiKey: "openalex-test",
+      firecrawlApiKey: "firecrawl-test",
+      adapters: { primary: adapter("groq"), reviewer: adapter("nvidia_nim"), fallback: null, evidenceMode: "live" },
+      search: async (query) => ({ provider: "openalex", query, candidates: [], raw: { status: "completed", failureCode: null, pagination: { pagesFetched: 1, truncated: false } } as never }),
+      webSearch: async (query) => ({ provider: "firecrawl", query, candidates: [], raw: { status: "failed", failureCode: "rate_limited", httpStatus: 429, pagination: { pagesFetched: 0, truncated: false } } }),
+    });
+    expect(result.status).toBe("provider_unavailable");
+    expect(result.providerFailures.some(({ provider, code }) => provider === "firecrawl" && code === "rate_limited")).toBe(true);
   });
 });

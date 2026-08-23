@@ -1,10 +1,13 @@
+import { createHash } from "node:crypto";
+
 import * as unpdf from "unpdf";
 import { z } from "zod";
 
 import { canonicalSha256 } from "../../contracts";
 import { extractRunToken } from "../auth/run-token";
 import { getDurableRunCoordinator, RunAccessDeniedError } from "../workflow/durable-coordinator";
-import { liveRouteError } from "../workflow/live-http";
+import { InvalidRequestError, liveRouteError, WorkflowStateConflictError } from "../workflow/live-http";
+import { searchFirecrawl } from "./firecrawl";
 import { importOpenAlexWork, createPastedSource } from "./import-service";
 import { extractPdfText } from "./pdf";
 import { searchScholarlyWorks } from "./openalex";
@@ -29,35 +32,62 @@ async function runAccess(request: Request, context: Context) {
 }
 
 async function json(request: Request) {
-  return request.json() as Promise<unknown>;
+  if (!request.headers.get("content-type")?.toLowerCase().includes("application/json")) {
+    throw new InvalidRequestError("Expected an application/json request.");
+  }
+  try {
+    return await request.json() as unknown;
+  } catch {
+    throw new InvalidRequestError("Request body must be valid JSON.");
+  }
+}
+
+function safeRunId(runId: string): string {
+  return createHash("sha256").update(runId).digest("hex").slice(0, 16);
 }
 
 export async function searchRunSources(request: Request, context: Context): Promise<Response> {
+  const startedAt = Date.now();
   try {
     await runAccess(request, context);
     const query = new URL(request.url).searchParams.get("query") ?? "";
     const parsed = OpenAlexSearchRequestSchema.parse({ query, maxResults: 10 });
     const apiKey = process.env.OPENALEX_API_KEY?.trim();
-    const result = await searchScholarlyWorks(parsed.query, { apiKey });
+    const firecrawlApiKey = process.env.FIRECRAWL_API_KEY?.trim();
+    const [result, web] = await Promise.all([
+      searchScholarlyWorks(parsed.query, { apiKey, limits: { maxResults: parsed.maxResults, pageSize: parsed.maxResults, maxPages: 2 } }),
+      firecrawlApiKey ? searchFirecrawl(parsed.query, { apiKey: firecrawlApiKey, maxResults: parsed.maxResults, deadlineMs: 20_000, signal: request.signal }) : Promise.resolve(null),
+    ]);
     return Response.json(
-      { provider: "openalex", query: result.query, candidates: result.candidates },
+      {
+        provider: "openalex",
+        query: result.query,
+        candidates: result.candidates,
+        providerStatus: result.raw.status,
+        failureCode: result.raw.failureCode,
+        partial: result.raw.status === "partial",
+        webCandidates: web?.candidates.map((candidate) => ({ id: candidate.id, url: candidate.url, title: candidate.title, description: candidate.description, category: candidate.category, license: candidate.license, canonicalDoi: candidate.canonicalDoi, authors: candidate.authors, publicationYear: candidate.publicationYear, rightsEligible: candidate.rightsEligible })) ?? [],
+        providers: {
+          openalex: { status: result.raw.status, failureCode: result.raw.failureCode },
+          firecrawl: web ? { status: web.raw.status, failureCode: web.raw.failureCode } : { status: "not_configured", failureCode: null },
+        },
+      },
       { headers: { "cache-control": "private, no-store" } },
     );
   } catch (error) {
-    return liveRouteError(error);
+    return liveRouteError(error, { request, operation: "search_run_sources", durationMs: Date.now() - startedAt });
   }
 }
 
 export async function autoCollectRunSources(request: Request, context: Context): Promise<Response> {
   const startedAt = Date.now();
-  let observedRunId = "unknown";
   try {
     const access = await runAccess(request, context);
-    observedRunId = access.runId;
     const body = AutomaticCollectionRequestSchema.parse(await json(request));
     const apiKey = process.env.OPENALEX_API_KEY?.trim();
+    const firecrawlApiKey = process.env.FIRECRAWL_API_KEY?.trim();
     if (access.snapshot.run.status !== "collecting_sources") {
-      throw new Error("Automatic collection requires approved scope and the collecting_sources phase.");
+      throw new WorkflowStateConflictError("Automatic collection requires approved scope and the collecting_sources phase.");
     }
     const collected = await collectAutomaticResearchPacket({
       run: access.snapshot.run,
@@ -65,6 +95,7 @@ export async function autoCollectRunSources(request: Request, context: Context):
       mode: body.mode,
       config: body.config,
       openAlexApiKey: apiKey ?? "",
+      firecrawlApiKey,
       signal: request.signal,
     });
     const saved = await access.coordinator.savePacketDraft(
@@ -74,7 +105,7 @@ export async function autoCollectRunSources(request: Request, context: Context):
       collected.draft,
     );
     console.info("[evidenceforge.research.collection]", JSON.stringify({
-      runId: access.runId,
+      runIdHash: safeRunId(access.runId),
       mode: body.mode,
       status: collected.status,
       verifiedPassages: collected.verifiedPassages,
@@ -109,6 +140,7 @@ export async function autoCollectRunSources(request: Request, context: Context):
         durationMs: collected.durationMs,
         searchWorkers: collected.searchAudits.map(({ itemId, status, durationMs, signal, error, value }) => ({
           itemId,
+          provider: value?.provider ?? null,
           status,
           durationMs: durationMs ?? null,
           signal: signal ?? null,
@@ -122,12 +154,7 @@ export async function autoCollectRunSources(request: Request, context: Context):
       },
     }, { status: collected.blocked ? 206 : 201, headers: { "cache-control": "private, no-store" } });
   } catch (error) {
-    console.error("[evidenceforge.research.collection.failed]", JSON.stringify({
-      runId: observedRunId,
-      errorName: error instanceof Error ? error.name : "UnknownError",
-      durationMs: Date.now() - startedAt,
-    }));
-    return liveRouteError(error);
+    return liveRouteError(error, { request, operation: "auto_collect_run_sources", durationMs: Date.now() - startedAt });
   }
 }
 
@@ -136,12 +163,13 @@ const importBodySchema = OpenAlexImportRequestSchema.extend({
 }).strict();
 
 export async function importRunOpenAlexSource(request: Request, context: Context): Promise<Response> {
+  const startedAt = Date.now();
   try {
     const access = await runAccess(request, context);
     const body = importBodySchema.parse(await json(request));
     const apiKey = process.env.OPENALEX_API_KEY?.trim();
     if (access.snapshot.run.status !== "collecting_sources") {
-      throw new Error("Sources can only be changed during packet collection.");
+      throw new WorkflowStateConflictError("Sources can only be changed during packet collection.");
     }
     const imported = await importOpenAlexWork(
       {
@@ -170,7 +198,7 @@ export async function importRunOpenAlexSource(request: Request, context: Context
       { status: 201, headers: { "cache-control": "private, no-store" } },
     );
   } catch (error) {
-    return liveRouteError(error);
+    return liveRouteError(error, { request, operation: "import_openalex_source", durationMs: Date.now() - startedAt });
   }
 }
 
@@ -180,11 +208,12 @@ const pasteBodySchema = PasteSourceRequestSchema.extend({
 }).strict();
 
 export async function pasteRunSource(request: Request, context: Context): Promise<Response> {
+  const startedAt = Date.now();
   try {
     const access = await runAccess(request, context);
     const body = pasteBodySchema.parse(await json(request));
     if (access.snapshot.run.status !== "collecting_sources") {
-      throw new Error("Sources can only be changed during packet collection.");
+      throw new WorkflowStateConflictError("Sources can only be changed during packet collection.");
     }
     const imported = createPastedSource({
       id: body.id,
@@ -212,15 +241,16 @@ export async function pasteRunSource(request: Request, context: Context): Promis
       { status: 201, headers: { "cache-control": "private, no-store" } },
     );
   } catch (error) {
-    return liveRouteError(error);
+    return liveRouteError(error, { request, operation: "paste_run_source", durationMs: Date.now() - startedAt });
   }
 }
 
 export async function uploadRunSource(request: Request, context: Context): Promise<Response> {
+  const startedAt = Date.now();
   try {
     const access = await runAccess(request, context);
     if (access.snapshot.run.status !== "collecting_sources") {
-      throw new Error("Sources can only be changed during packet collection.");
+      throw new WorkflowStateConflictError("Sources can only be changed during packet collection.");
     }
     const form = await request.formData();
     const file = form.get("file");
@@ -228,11 +258,11 @@ export async function uploadRunSource(request: Request, context: Context): Promi
     const title = String(form.get("title") ?? "").trim();
     const permissionBasis = String(form.get("permissionBasis") ?? "").trim();
     if (!(file instanceof File) || file.type !== "application/pdf") {
-      throw new Error("Upload one PDF document.");
+      throw new InvalidRequestError("Upload one PDF document.");
     }
-    if (file.size > 10 * 1024 * 1024) throw new Error("PDF exceeds the 10 MB limit.");
+    if (file.size > 10 * 1024 * 1024) throw new InvalidRequestError("PDF exceeds the 10 MB limit.");
     if (!expectedRevision || !permissionBasis) {
-      throw new Error("Revision and an explicit permission basis are required.");
+      throw new InvalidRequestError("Revision and an explicit permission basis are required.");
     }
     const extracted = await extractPdfText(new Uint8Array(await file.arrayBuffer()), unpdf);
     const id = `upload-${crypto.randomUUID()}`;
@@ -260,11 +290,12 @@ export async function uploadRunSource(request: Request, context: Context): Promi
       { status: 201, headers: { "cache-control": "private, no-store" } },
     );
   } catch (error) {
-    return liveRouteError(error);
+    return liveRouteError(error, { request, operation: "upload_run_source", durationMs: Date.now() - startedAt });
   }
 }
 
 export async function getRunPacketDraft(request: Request, context: Context): Promise<Response> {
+  const startedAt = Date.now();
   try {
     const access = await runAccess(request, context);
     const draft = PacketDraftSchema.parse(
@@ -275,14 +306,15 @@ export async function getRunPacketDraft(request: Request, context: Context): Pro
       { headers: { "cache-control": "private, no-store" } },
     );
   } catch (error) {
-    return liveRouteError(error);
+    return liveRouteError(error, { request, operation: "get_run_packet_draft", durationMs: Date.now() - startedAt });
   }
 }
 
 export async function deleteRunDraftSource(request: Request, context: Context): Promise<Response> {
+  const startedAt = Date.now();
   try {
     const access = await runAccess(request, context);
-    if (!access.sourceId) throw new Error("Source ID is required.");
+    if (!access.sourceId) throw new InvalidRequestError("Source ID is required.");
     const body = z.object({ expectedRevision: z.string().min(1) }).strict().parse(await json(request));
     const draft = removeDraftSource(
       await access.coordinator.getPacketDraft(access.runId, access.token),
@@ -291,11 +323,12 @@ export async function deleteRunDraftSource(request: Request, context: Context): 
     const saved = await access.coordinator.savePacketDraft(access.runId, body.expectedRevision, access.token, draft);
     return Response.json({ revision: saved.revision, draft: saved.draft }, { headers: { "cache-control": "private, no-store" } });
   } catch (error) {
-    return liveRouteError(error);
+    return liveRouteError(error, { request, operation: "delete_run_draft_source", durationMs: Date.now() - startedAt });
   }
 }
 
 export async function freezeRunPacket(request: Request, context: Context): Promise<Response> {
+  const startedAt = Date.now();
   try {
     const access = await runAccess(request, context);
     const body = z.object({
@@ -309,10 +342,15 @@ export async function freezeRunPacket(request: Request, context: Context): Promi
     const usable = draft.sources.filter(({ chunks }) => chunks.length > 0);
     const verification = draft.verification;
     if (verification?.status !== "ready" || verification.passages.length !== 10 || verification.claimsMissing.length > 0) {
-      throw new Error("packet_not_ready: ten dual-model verified passages covering every claim are required before freeze");
+      throw new WorkflowStateConflictError("packet_not_ready: ten dual-model verified passages covering every claim are required before freeze");
     }
-    const sources = new Map(usable.map(({ source }) => [source.id, source]));
-    const chunks = new Map(usable.flatMap(({ chunks: entryChunks }) => entryChunks).map((chunk) => [chunk.id, chunk]));
+    const allSources = usable.map(({ source }) => source);
+    const allChunks = usable.flatMap(({ chunks: entryChunks }) => entryChunks);
+    const sources = new Map(allSources.map((source) => [source.id, source]));
+    const chunks = new Map(allChunks.map((chunk) => [chunk.id, chunk]));
+    if (sources.size !== allSources.length || chunks.size !== allChunks.length) {
+      throw new WorkflowStateConflictError("packet_not_ready: duplicate source or chunk identity would overwrite frozen evidence");
+    }
     for (const passage of verification.passages) {
       const source = sources.get(passage.sourceId);
       const chunk = chunks.get(passage.sourceChunkId);
@@ -327,7 +365,7 @@ export async function freezeRunPacket(request: Request, context: Context): Promi
         source.rights.maySendToModel !== "allowed" ||
         chunk.displayPermission !== "allowed"
       ) {
-        throw new Error("packet_not_ready: verified passage hashes, rights, or literal membership changed");
+        throw new WorkflowStateConflictError("packet_not_ready: verified passage hashes, rights, or literal membership changed");
       }
     }
     const collected = await access.coordinator.collectSources(
@@ -345,6 +383,6 @@ export async function freezeRunPacket(request: Request, context: Context): Promi
     );
     return Response.json(frozen.snapshot, { headers: { "cache-control": "private, no-store" } });
   } catch (error) {
-    return liveRouteError(error);
+    return liveRouteError(error, { request, operation: "freeze_run_packet", durationMs: Date.now() - startedAt });
   }
 }

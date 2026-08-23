@@ -398,6 +398,7 @@
 .formMeta { display: flex; align-items: center; justify-content: space-between; padding-bottom: .75rem; border-bottom: 1px solid var(--ef-line); color: var(--ef-quiet); font: .58rem var(--font-geist-mono), monospace; letter-spacing: .06em; text-transform: uppercase; }
 .formMeta span:last-child { display: inline-flex; align-items: center; gap: .4rem; }
 .formMeta i { width: .38rem; height: .38rem; border-radius: 50%; background: var(--ef-success); box-shadow: 0 0 0 3px rgb(82 212 138 / 12%); }
+.liveEntryNotice { margin: 0; color: var(--ef-quiet); font: .6rem/1.5 var(--font-geist-mono), monospace; }
 .liveEntryForm label { gap: .45rem; color: var(--ef-text-soft); font-size: .67rem; }
 .liveEntryForm textarea,
 .liveEntryForm input { border-color: var(--ef-line-strong); border-radius: var(--ef-radius-sm); background: rgb(5 9 17 / 72%); color: var(--ef-text); font-size: .78rem; }

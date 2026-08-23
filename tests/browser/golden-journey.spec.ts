@@ -9,7 +9,7 @@ const requireFromA11yPlugin = createRequire(
   createRequire(__filename).resolve("eslint-plugin-jsx-a11y"),
 );
 const axeScriptPath = requireFromA11yPlugin.resolve("axe-core/axe.min.js");
-const localOrigin = "http://127.0.0.1:3100/";
+const localOrigin = `http://127.0.0.1:${process.env.PLAYWRIGHT_PORT ?? 3100}/`;
 
 type JourneyRun = {
   id: string;

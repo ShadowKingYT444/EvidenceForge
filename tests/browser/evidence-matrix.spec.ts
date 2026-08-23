@@ -74,8 +74,9 @@ test.describe("claim-by-source evidence matrix", () => {
 
   test("keeps denied excerpts hidden and explains the rights boundary", async ({ page }, testInfo) => {
     const externalRequests: string[] = [];
+    const localOrigin = `http://127.0.0.1:${process.env.PLAYWRIGHT_PORT ?? 3100}/`;
     page.on("request", (request) => {
-      if (!request.url().startsWith("http://127.0.0.1:3100/")) externalRequests.push(request.url());
+      if (!request.url().startsWith(localOrigin)) externalRequests.push(request.url());
     });
     await openMatrix(page, "/workbench?packet=denied");
     const matrix = page.getByRole("region", { name: "Claim by source evidence matrix" });

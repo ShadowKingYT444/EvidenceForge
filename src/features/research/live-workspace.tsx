@@ -127,7 +127,9 @@ export function LiveWorkspace({ runId }: { runId: string }) {
   const packetReady = packetVerification?.status === "ready" && verifiedPassageCount === targetPassages && (packetVerification?.claimsMissing?.length ?? 0) === 0;
   const providerUnavailable = packetVerification?.status === "provider_unavailable";
   const evidenceShortfall = packetVerification?.status === "evidence_shortfall";
-  const ledgerPassages = providerUnavailable ? pendingPassages : verifiedPassages;
+  const ledgerPassages = [...verifiedPassages, ...pendingPassages].filter((passage, index, values) => values.findIndex(({ id }) => id === passage.id) === index);
+  const providerFailures: JsonRecord[] = packetVerification?.providerFailures ?? [];
+  const retryableVerification = providerUnavailable && pendingPassages.length > 0;
   const packetAudit = packetVerification ?? collection;
 
   useEffect(() => {
@@ -324,12 +326,12 @@ export function LiveWorkspace({ runId }: { runId: string }) {
               <div className="research-source-progress">
                 <div><span>Verified passages</span><strong>{verifiedPassageCount}<small> / {targetPassages}</small></strong></div>
                 <div className="research-progress-track" role="progressbar" aria-label="Dual-model verified passages" aria-valuemin={0} aria-valuemax={targetPassages} aria-valuenow={verifiedPassageCount}><i style={{ width: `${passageProgress}%` }} /></div>
-                <p>{packetReady ? "Ten literal passages passed deterministic checks and both model judges." : providerUnavailable ? `${pendingPassages.length} passage${pendingPassages.length === 1 ? " is" : "s are"} saved and awaiting model verification. Retrieval will not be repeated.` : evidenceShortfall ? `${verifiedPassageCount} of ${targetPassages} passages passed both model judges. Search deeper or add a trusted source; weak matches were not padded into the packet.` : "EvidenceForge will reject generic, cross-domain, and unverifiable matches."}</p>
+                <p>{packetReady ? "Ten literal passages passed deterministic checks and both model judges." : providerUnavailable ? retryableVerification ? `${verifiedPassageCount} verified passage${verifiedPassageCount === 1 ? " is" : "s are"} preserved; ${pendingPassages.length} unresolved passage${pendingPassages.length === 1 ? " is" : "s are"} awaiting provider recovery.` : `${verifiedPassageCount} verified passage${verifiedPassageCount === 1 ? " is" : "s are"} preserved, but scholarly retrieval did not complete. Search deeper will target the missing claims.` : evidenceShortfall ? `${verifiedPassageCount} of ${targetPassages} passages passed both model judges. Search deeper or add a trusted source; weak matches were not padded into the packet.` : "EvidenceForge will reject generic, cross-domain, and unverifiable matches."}</p>
                 {packetAudit?.rejectionCounts ? <p className="research-muted">Rejected: {packetAudit.rejectionCounts.offTopic ?? 0} off-topic · {packetAudit.rejectionCounts.rightsIneligible ?? 0} rights · {packetAudit.rejectionCounts.primaryRejected ?? 0} primary · {packetAudit.rejectionCounts.reviewerRejected ?? 0} reviewer</p> : null}
-                {providerUnavailable ? <p className="research-muted">Provider unavailable: {(packetVerification?.providerFailures ?? []).map((failure: JsonRecord) => `${failure.provider} ${String(failure.code).replaceAll("_", " ")} (${failure.affectedPassages} awaiting)`).join(" · ")}</p> : null}
+                {providerFailures.length > 0 ? <p className="research-muted">Provider warnings: {providerFailures.map((failure: JsonRecord) => `${failure.provider} ${String(failure.code).replaceAll("_", " ")}${failure.affectedPassages ? ` (${failure.affectedPassages} affected)` : ""}`).join(" · ")}</p> : null}
               </div>
               <div className="research-panel-actions research-source-actions">
-                <button type="button" className="research-button research-button-primary" onClick={() => void autoCollect(data.revision, providerUnavailable ? "retry_verification" : evidenceShortfall ? "deeper" : "initial")} disabled={notice.includes("passages")}><Sparkles size={15} /> {providerUnavailable ? "Retry verification" : evidenceShortfall ? "Search deeper" : "Build 10 verified passages"}</button>
+                <button type="button" className="research-button research-button-primary" onClick={() => void autoCollect(data.revision, retryableVerification ? "retry_verification" : providerUnavailable || evidenceShortfall ? "deeper" : "initial")} disabled={notice.includes("passages")}><Sparkles size={15} /> {retryableVerification ? "Retry verification" : providerUnavailable || evidenceShortfall ? "Search deeper" : "Build 10 verified passages"}</button>
                 <button type="button" className="research-button research-button-secondary" onClick={(event) => openDrawer("add-source", event.currentTarget)}><Plus size={15} /> Add a source</button>
               </div>
               <SourceLedger entries={draftEntries} passages={ledgerPassages} claims={claims} pending={providerUnavailable} onRemove={async (id) => {

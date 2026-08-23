@@ -53,7 +53,7 @@ test("mocks a bounded successful check, clears the key, and never persists it", 
   await dialog.getByRole("button", { name: "Verify key" }).click();
   await expect(dialog).toContainText("Connection verified");
   await expect(dialog.getByLabel("API key")).toHaveValue("");
-  expect(await page.evaluate(() => ({ local: localStorage.length, session: sessionStorage.length, url: location.href }))).toEqual({ local: 0, session: 0, url: "http://127.0.0.1:3100/" });
+  expect(await page.evaluate(() => ({ local: localStorage.length, session: sessionStorage.length, url: location.href }))).toEqual({ local: 0, session: 0, url: `http://127.0.0.1:${process.env.PLAYWRIGHT_PORT ?? 3100}/` });
   await expect(page.locator("body")).not.toContainText(secret);
 });
 

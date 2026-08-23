@@ -1,4 +1,4 @@
-import { createHmac, timingSafeEqual } from "node:crypto";
+import { createHmac, randomUUID, timingSafeEqual } from "node:crypto";
 import { z } from "zod";
 import { ResearchRunSchema, canonicalSha256, canonicalizeJson, type ResearchRun } from "../../contracts";
 import { extractRunToken } from "../auth/run-token";
@@ -162,10 +162,35 @@ export function getRecoveryService(): RecoveryService {
   });
 }
 
-export function recoveryErrorResponse(error: unknown): Response {
+type RecoveryErrorContext = { request?: Request; operation?: string; durationMs?: number };
+
+export function recoveryErrorResponse(error: unknown, context: RecoveryErrorContext = {}): Response {
   const known = error instanceof RecoveryError;
   const status = known ? error.status : 500;
-  return Response.json({ error: { code: known ? error.code : "internal_error", message: status >= 500 ? "Recovery request could not be completed." : error instanceof Error ? error.message : "Invalid recovery request.", retryable: status >= 500 } }, { status, headers: { "cache-control": "private, no-store" } });
+  const code = known ? error.code : "internal_error";
+  const supplied = context.request?.headers.get("x-request-id")?.trim();
+  const correlationId = supplied && /^[A-Za-z0-9._:-]{8,128}$/u.test(supplied) ? supplied : randomUUID();
+  let runIdHash: string | undefined;
+  try {
+    const match = context.request ? new URL(context.request.url).pathname.match(/\/api\/runs\/([^/]+)/u) : null;
+    runIdHash = match ? canonicalSha256(decodeURIComponent(match[1])).slice(0, 16) : undefined;
+  } catch {
+    runIdHash = undefined;
+  }
+  console.error(JSON.stringify({
+    correlationId,
+    operation: context.operation ?? "recovery_route",
+    runIdHash,
+    errorClass: error instanceof Error ? error.name : "UnknownError",
+    code,
+    httpStatus: status,
+    retryable: status >= 500,
+    ...(context.durationMs === undefined ? {} : { durationMs: Math.max(0, Math.round(context.durationMs)) }),
+  }));
+  return Response.json(
+    { error: { code, message: status >= 500 ? "Recovery request could not be completed." : error instanceof Error ? error.message : "Invalid recovery request.", retryable: status >= 500, correlationId } },
+    { status, headers: { "cache-control": "private, no-store", "x-correlation-id": correlationId } },
+  );
 }
 
 export function recoveryResponse(envelope: RecoveryEnvelope): Response {

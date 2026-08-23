@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { createRunToken, digestRunToken, extractRunToken, runTokenCookie, tokenMatchesDigest } from "../../src/server/auth/run-token";
+import { createRunToken, digestRunToken, extractRunToken, readRunTokenSecret, runTokenCookie, tokenMatchesDigest } from "../../src/server/auth/run-token";
+import { EnvironmentValidationError } from "../../src/server/environment";
 
 describe("private run tokens", () => {
   it("creates 256-bit tokens and verifies HMAC digests", () => {
@@ -18,5 +19,18 @@ describe("private run tokens", () => {
     expect(runTokenCookie(token, { secure: true })).toContain("HttpOnly");
     expect(runTokenCookie(token, { secure: true })).toContain("SameSite=Lax");
     expect(runTokenCookie(token, { secure: true })).toContain("Secure");
+  });
+
+  it("rejects production without a secret on Render", () => {
+    expect(() => readRunTokenSecret({ NODE_ENV: "production", RENDER: "true" })).toThrowError(EnvironmentValidationError);
+  });
+
+  it("rejects production without a secret on a non-Render host", () => {
+    expect(() => readRunTokenSecret({ NODE_ENV: "production" })).toThrowError(EnvironmentValidationError);
+  });
+
+  it("keeps the fallback development-only and accepts a configured secret", () => {
+    expect(readRunTokenSecret({ NODE_ENV: "development" })).toBe("evidenceforge-local-development-token-secret");
+    expect(readRunTokenSecret({ NODE_ENV: "production", RUN_TOKEN_SECRET: "configured-production-secret" })).toBe("configured-production-secret");
   });
 });

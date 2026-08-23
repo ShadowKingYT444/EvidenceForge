@@ -56,4 +56,17 @@ describe("source import service", () => {
     expect(result.chunks).toEqual([]);
     expect(result.source.rights).toMatchObject({ mayStore: "unknown", mayDisplay: "unknown", maySendToModel: "unknown" });
   });
+
+  it("assigns stable unique chunk IDs when one source is ranked for multiple claims", () => {
+    const result = createPastedSource({
+      id: "multi-claim-source",
+      title: "Two-claim source",
+      text: "Retrieval grounding reduces unsupported factual claims.\n\nIndependent evaluation measures factual accuracy after retrieval grounding.\n\nCaching reduces repeated retrieval latency in production systems.",
+      claims: ["retrieval grounding factual claims", "retrieval evaluation factual accuracy", "caching retrieval latency"],
+      originalInput: "researcher paste",
+      rights: { mayStore: "allowed", mayDisplay: "allowed", maySendToModel: "allowed", permissionBasis: "author-provided" },
+    });
+    expect(new Set(result.chunks.map(({ id }) => id)).size).toBe(result.chunks.length);
+    expect(result.chunks.every(({ id }) => /-chunk-[a-f0-9]{20}-p\d+$/u.test(id))).toBe(true);
+  });
 });
