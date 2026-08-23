@@ -60,9 +60,10 @@ test("completes the three-minute Epistemic CI judge path", async ({ page }) => {
   await expect(page.locator("header code").first()).toHaveText(fixtureHashLabel!);
 });
 
-test("opens node details and redirects the legacy workbench", async ({ page }) => {
+test("opens node details while keeping the recorded workbench available", async ({ page }) => {
   await page.goto("/workbench");
-  await expect(page).toHaveURL(/\/$/);
+  await expect(page.getByRole("heading", { level: 1, name: "Evidence" })).toBeVisible();
+  await page.goto("/");
   await page.getByRole("button", { name: /Try the demo/ }).click();
   await page.getByRole("button", { name: "Compile conclusion" }).click();
   await page.getByRole("button", { name: /gf-evidence-02/ }).click();

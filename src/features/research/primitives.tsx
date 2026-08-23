@@ -27,7 +27,7 @@ export function WorkspaceStageNav({
               <button type="button" disabled={index > active} aria-current={selected === index ? "step" : undefined} onClick={() => onSelect(index)}>
                 <span>{index < active ? <Check size={12} /> : String(index + 1).padStart(2, "0")}</span>
                 <strong>{stage}</strong>
-                <small>{state === "active" ? "Current" : state === "complete" ? "Ready" : "Locked"}</small>
+                <small>{state === "active" ? "Current" : state === "complete" ? "Complete" : "Not started"}</small>
               </button>
             </li>
           );
@@ -47,6 +47,6 @@ export function ResearchStateCard({ kind, title, children, icon: Icon }: { kind:
   return <section className={`research-state-card research-state-${kind}`} aria-live={kind === "loading" ? "polite" : undefined}>{Glyph && <Glyph className="research-state-icon" size={20} aria-hidden="true" />}<h3>{title}</h3><p>{children}</p></section>;
 }
 
-export function TimelineRow({ time, title, detail, status = "complete" }: { time: string; title: string; detail?: string; status?: "complete" | "active" | "pending" }) {
-  return <div className={`research-timeline-row research-timeline-${status}`}><time>{time}</time><span className="research-timeline-marker" aria-hidden="true" /> <div><strong>{title}</strong>{detail && <p>{detail}</p>}</div></div>;
+export function TimelineRow({ time, title, detail, stage, actor, eventStatus, status = "complete" }: { time: string; title: string; detail?: string; stage?: string; actor?: string; eventStatus?: string; status?: "complete" | "active" | "pending" }) {
+  return <div className={`research-timeline-row research-timeline-${status}`}><time>{time}</time><span className="research-timeline-marker" aria-hidden="true" /> <div><strong>{title}</strong>{detail && <p>{detail}</p>}<small>{[stage, actor, eventStatus].filter(Boolean).join(" / ")}</small></div></div>;
 }

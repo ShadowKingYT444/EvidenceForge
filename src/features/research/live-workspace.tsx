@@ -19,7 +19,6 @@ import {
   RefreshCw,
   Search,
   ShieldCheck,
-  Sparkles,
   Trash2,
   Upload,
 } from "lucide-react";
@@ -27,6 +26,9 @@ import Link from "next/link";
 import { type FormEvent, useCallback, useEffect, useRef, useState } from "react";
 
 import { LiveEpistemicPanel } from "./live-epistemic-panel";
+import { SourceTable, type SourceTableRow } from "./components/source-table";
+import { VerificationStack } from "./components/verification-stack";
+import { WorkflowProgress, type WorkflowStep } from "./components/workflow-progress";
 import { WorkspaceStageNav, StatusBadge, TimelineRow } from "./primitives";
 import { ResearchDrawer } from "./research-drawer";
 
@@ -41,7 +43,7 @@ type WorkspaceState = {
   loading: boolean;
   error: string;
 };
-type WorkspaceDrawer = "context" | "add-source" | "activity" | "evidence-detail" | null;
+type WorkspaceDrawer = "context" | "add-source" | "activity" | "claim-detail" | "source-detail" | "evidence-detail" | "objection-detail" | null;
 type SourceMode = "search" | "paste" | "upload";
 
 const empty: WorkspaceState = { run: null, revision: "", progress: null, draft: null, timeline: [], candidates: [], loading: true, error: "" };
@@ -81,6 +83,9 @@ export function LiveWorkspace({ runId }: { runId: string }) {
   const [drawer, setDrawer] = useState<WorkspaceDrawer>(null);
   const [sourceMode, setSourceMode] = useState<SourceMode>("search");
   const [selectedEvidence, setSelectedEvidence] = useState<JsonRecord | null>(null);
+  const [selectedClaim, setSelectedClaim] = useState<JsonRecord | null>(null);
+  const [selectedSource, setSelectedSource] = useState<JsonRecord | null>(null);
+  const [selectedObjection, setSelectedObjection] = useState<JsonRecord | null>(null);
   const drawerReturnTarget = useRef<HTMLElement | null>(null);
   const previousActiveStage = useRef(0);
   const initializedStage = useRef(false);
@@ -292,6 +297,37 @@ export function LiveWorkspace({ runId }: { runId: string }) {
   if (data.error) return <main className="research-workspace"><div className="research-state-card research-state-error"><AlertTriangle size={20} /><h1>Investigation unavailable</h1><p>{data.error}</p><button type="button" className="research-button research-button-primary" onClick={() => { setData({ ...empty }); void load(); }}><RefreshCw size={15} /> Try again</button></div></main>;
 
   const passageProgress = Math.min(100, Math.round((verifiedPassageCount / targetPassages) * 100));
+  const passageClaimIds = new Set(ledgerPassages.map((passage) => passage.subclaimId ?? passage.claimId).filter(Boolean));
+  const claimsCovered = claims.filter((claim) => passageClaimIds.has(claim.id)).length;
+  const collectingActive = /passages|searching deeper|verification/i.test(notice);
+  const sourceRows: SourceTableRow[] = draftEntries.map((entry, index) => {
+    const source = entry.source ?? {};
+    const sourcePassages = ledgerPassages.filter((passage) => passage.sourceId === source.id);
+    const coverage = [...new Set(sourcePassages.map((passage) => claims.findIndex((claim) => claim.id === (passage.subclaimId ?? passage.claimId)) + 1).filter((number) => number > 0))];
+    return {
+      id: String(source.id ?? `source-${index + 1}`),
+      title: String(source.bibliographicMetadata?.title ?? "Untitled source"),
+      year: String(source.bibliographicMetadata?.year ?? source.publicationYear ?? "—"),
+      kind: String(source.bibliographicMetadata?.type ?? source.type ?? "Scholarly work"),
+      coverage: coverage.length ? coverage.map((number) => `C${number}`).join(", ") : "—",
+      rights: String(source.rights?.permissionBasis ?? source.access?.license ?? source.access?.provider ?? "Not recorded"),
+      passages: sourcePassages.length,
+      verification: providerUnavailable ? "Awaiting provider" : sourcePassages.length ? "Verified" : "Not started",
+      pending: providerUnavailable,
+    };
+  });
+  const workflowLabels = ["Discover", "Screen", "Import", "Extract", "Primary verification", "Independent review", "Freeze"];
+  const workflowSteps: WorkflowStep[] = packetReady
+    ? workflowLabels.map((label) => ({ label, state: label === "Freeze" ? "active" : "complete", value: label === "Freeze" ? "Human checkpoint" : "Complete" }))
+    : [
+      { label: "Discover", state: draftEntries.length ? "complete" : "active", value: draftEntries.length ? `${draftEntries.length} retained` : "Searching candidates" },
+      { label: "Screen", state: draftEntries.length ? "complete" : "not-started", value: draftEntries.length ? "Eligibility recorded" : undefined },
+      { label: "Import", state: draftEntries.length ? "complete" : "not-started", value: draftEntries.length ? `${usableDraftSources.length} usable` : undefined },
+      { label: "Extract", state: ledgerPassages.length ? "complete" : draftEntries.length ? "active" : "not-started", value: ledgerPassages.length ? `${ledgerPassages.length} passages` : undefined },
+      { label: "Primary verification", state: providerUnavailable ? "warning" : verifiedPassageCount ? "complete" : ledgerPassages.length ? "active" : "not-started", value: providerUnavailable ? "Provider unavailable" : verifiedPassageCount ? `${verifiedPassageCount} admitted` : undefined },
+      { label: "Independent review", state: evidenceShortfall ? "warning" : verifiedPassageCount ? "active" : "not-started", value: evidenceShortfall ? "Evidence shortfall" : verifiedPassageCount ? `${verifiedPassageCount} passed` : undefined },
+      { label: "Freeze", state: "not-started" },
+    ];
 
   return (
     <main className="research-workspace">
@@ -318,23 +354,27 @@ export function LiveWorkspace({ runId }: { runId: string }) {
 
           {notice ? <div className="research-notice" role="status"><LoaderCircle size={15} /> {notice}</div> : null}
 
-          {selectedStage === 0 ? <ScopePanel status={status} claims={claims} onApprove={approveScopeAndCollect} onRun={runModelStages} /> : null}
+          {selectedStage === 0 ? <ScopePanel status={status} claims={claims} onApprove={approveScopeAndCollect} onRun={runModelStages} onSelect={(claim, target) => { setSelectedClaim(claim); openDrawer("claim-detail", target); }} /> : null}
 
           {selectedStage === 1 ? (
             <section className="research-panel research-focused-panel">
-              <PanelHeading icon={<BookOpen size={18} />} kicker="Evidence packet" title="Collect the signal" />
+              <PanelHeading icon={<BookOpen size={18} />} kicker="Evidence packet" title="Search scholarly sources" />
+              <WorkflowProgress steps={workflowSteps} />
               <div className="research-source-progress">
                 <div><span>Verified passages</span><strong>{verifiedPassageCount}<small> / {targetPassages}</small></strong></div>
+                <div><span>Claims covered</span><strong>{claimsCovered}<small> / {claims.length || "—"}</small></strong></div>
+                <div><span>Sources retained</span><strong>{usableDraftSources.length}</strong></div>
+                <div><span>Pending passages</span><strong>{pendingPassages.length}</strong></div>
                 <div className="research-progress-track" role="progressbar" aria-label="Dual-model verified passages" aria-valuemin={0} aria-valuemax={targetPassages} aria-valuenow={verifiedPassageCount}><i style={{ width: `${passageProgress}%` }} /></div>
                 <p>{packetReady ? "Ten literal passages passed deterministic checks and both model judges." : providerUnavailable ? retryableVerification ? `${verifiedPassageCount} verified passage${verifiedPassageCount === 1 ? " is" : "s are"} preserved; ${pendingPassages.length} unresolved passage${pendingPassages.length === 1 ? " is" : "s are"} awaiting provider recovery.` : `${verifiedPassageCount} verified passage${verifiedPassageCount === 1 ? " is" : "s are"} preserved, but scholarly retrieval did not complete. Search deeper will target the missing claims.` : evidenceShortfall ? `${verifiedPassageCount} of ${targetPassages} passages passed both model judges. Search deeper or add a trusted source; weak matches were not padded into the packet.` : "EvidenceForge will reject generic, cross-domain, and unverifiable matches."}</p>
                 {packetAudit?.rejectionCounts ? <p className="research-muted">Rejected: {packetAudit.rejectionCounts.offTopic ?? 0} off-topic · {packetAudit.rejectionCounts.rightsIneligible ?? 0} rights · {packetAudit.rejectionCounts.primaryRejected ?? 0} primary · {packetAudit.rejectionCounts.reviewerRejected ?? 0} reviewer</p> : null}
                 {providerFailures.length > 0 ? <p className="research-muted">Provider warnings: {providerFailures.map((failure: JsonRecord) => `${failure.provider} ${String(failure.code).replaceAll("_", " ")}${failure.affectedPassages ? ` (${failure.affectedPassages} affected)` : ""}`).join(" · ")}</p> : null}
               </div>
               <div className="research-panel-actions research-source-actions">
-                <button type="button" className="research-button research-button-primary" onClick={() => void autoCollect(data.revision, retryableVerification ? "retry_verification" : providerUnavailable || evidenceShortfall ? "deeper" : "initial")} disabled={notice.includes("passages")}><Sparkles size={15} /> {retryableVerification ? "Retry verification" : providerUnavailable || evidenceShortfall ? "Search deeper" : "Build 10 verified passages"}</button>
+                {packetReady ? null : collectingActive ? <div className="research-active-operation" role="status"><LoaderCircle size={15} /> {notice}</div> : <button type="button" className="research-button research-button-primary" onClick={() => void autoCollect(data.revision, retryableVerification ? "retry_verification" : providerUnavailable || evidenceShortfall ? "deeper" : "initial")}>{retryableVerification ? "Retry verification" : providerUnavailable || evidenceShortfall ? "Search deeper" : "Start scholarly search"}</button>}
                 <button type="button" className="research-button research-button-secondary" onClick={(event) => openDrawer("add-source", event.currentTarget)}><Plus size={15} /> Add a source</button>
               </div>
-              <SourceLedger entries={draftEntries} passages={ledgerPassages} claims={claims} pending={providerUnavailable} onRemove={async (id) => {
+              <SourceTable rows={sourceRows} loading={collectingActive} onSelect={(row, target) => { const entry = draftEntries.find((item) => String(item.source?.id) === row.id); setSelectedSource(entry?.source ?? null); openDrawer("source-detail", target); }} onRemove={async (id) => {
                 try {
                   await request(`/sources/${encodeURIComponent(id)}`, { method: "DELETE", headers: { "content-type": "application/json" }, body: JSON.stringify({ expectedRevision: data.revision }) });
                   await load();
@@ -354,7 +394,7 @@ export function LiveWorkspace({ runId }: { runId: string }) {
                 <strong>{run.conclusions?.[0]?.conclusion ?? "No conclusion has been committed yet."}</strong>
                 <small>{run.researchGaps?.length ? `${run.researchGaps.length} decision-changing gaps remain.` : "No recorded decision-changing gap."}</small>
               </div>
-              {evidence.length > 0 ? <div className="research-evidence-list">{evidence.map((card, index) => <button type="button" key={card.id ?? index} onClick={(event) => openDrawer("evidence-detail", event.currentTarget, card)}><StatusBadge status={card.relationship === "supports" ? "ready" : "needs-review"}>{card.relationship ?? "Candidate"}</StatusBadge><strong>{card.excerpt ?? "Open the recorded evidence passage."}</strong><span>{card.sourceChunkId ?? "Source passage"} <ArrowRight size={14} /></span></button>)}</div> : <div className="research-state-card"><FileText size={19} /><h3>Evidence analysis is ready</h3><p>Continue the workflow to extract and assess exact passages.</p></div>}
+              {evidence.length > 0 ? <div className="research-evidence-list">{evidence.map((card, index) => <button type="button" key={card.id ?? index} onClick={(event) => openDrawer("evidence-detail", event.currentTarget, card)}><StatusBadge status={card.relationship === "supports" ? "ready" : "needs-review"}>{card.relationship ?? "Candidate"}</StatusBadge><span className="research-evidence-copy"><strong>{card.excerpt ?? "Open the recorded evidence passage."}</strong><small>{card.sourceChunkId ?? "Source passage"} / Claim {card.subclaimId ?? "—"}</small></span><VerificationStack deterministic={card.deterministicVerification?.excerptExists ? "verified" : "failed"} primary={card.modelAssessment?.entailment ? "verified" : "pending"} independent={card.independentReview?.entailment || card.reviewerAssessment?.entailment ? "verified" : "unavailable"} human={card.humanReview?.status === "approved" ? "verified" : "pending"} /></button>)}</div> : <div className="research-state-card"><FileText size={19} /><h3>Evidence analysis has not started</h3><p>Freeze a verified packet before exact passages can be assessed against claims.</p></div>}
               {run.experiment ? <ExperimentSummary experiment={run.experiment} /> : null}
               {run.experimentAbstention ? <div className="research-state-card research-state-error"><AlertTriangle size={18} /><h3>Experiment planning abstained</h3><p>{run.experimentAbstention.reason}</p></div> : null}
               {modelStatuses.has(status) ? <button type="button" className="research-button research-button-primary" onClick={runModelStages}>{stageLabel(status)} <ArrowRight size={16} /></button> : null}
@@ -364,7 +404,7 @@ export function LiveWorkspace({ runId }: { runId: string }) {
           {selectedStage === 3 ? (
             <section className="research-panel research-focused-panel">
               <PanelHeading icon={<AlertTriangle size={18} />} kicker="Adversarial review" title="Challenge the conclusion" />
-              {run.review?.objections?.length ? <div className="research-objection-list">{run.review.objections.map((objection: JsonRecord, index: number) => <details className="research-objection" key={objection.id ?? index}><summary><span><strong>{objection.category ?? `Objection ${index + 1}`}</strong><small>{objection.targetField}</small></span><StatusBadge status="needs-review">{objection.severity}</StatusBadge></summary><p>{objection.rationale}</p></details>)}</div> : <div className="research-state-card"><ShieldCheck size={19} /><h3>Review has not started</h3><p>Complete evidence analysis before running an independent challenge.</p></div>}
+              {run.review?.objections?.length ? <div className="research-objection-list">{run.review.objections.map((objection: JsonRecord, index: number) => <button type="button" className="research-objection" key={objection.id ?? index} onClick={(event) => { setSelectedObjection(objection); openDrawer("objection-detail", event.currentTarget); }}><span><strong>{objection.category ?? `Objection ${index + 1}`}</strong><small>{objection.targetField ?? "Investigation"}</small><p>{objection.rationale}</p></span><StatusBadge status="needs-review">{objection.severity ?? "Unresolved"}</StatusBadge></button>)}</div> : <div className="research-state-card"><ShieldCheck size={19} /><h3>Review has not started</h3><p>Complete evidence analysis before running an independent challenge.</p></div>}
               {status === "awaiting_objection_dispositions" ? <button type="button" className="research-button research-button-primary" onClick={() => checkpoint("objection_dispositions")}>Preserve objections and continue <ArrowRight size={16} /></button> : null}
               {status === "revising_experiment" ? <button type="button" className="research-button research-button-primary" onClick={runModelStages}>Apply dispositions <ArrowRight size={16} /></button> : null}
             </section>
@@ -386,7 +426,7 @@ export function LiveWorkspace({ runId }: { runId: string }) {
       </ResearchDrawer>
 
       <ResearchDrawer open={drawer === "activity"} title="Activity and provenance" kicker="Run ledger" onClose={closeDrawer}>
-        {data.timeline.length > 0 ? data.timeline.map((event, index) => <TimelineRow key={event.id ?? index} time={event.at ?? "—"} title={event.label ?? "Workflow event"} detail={event.stage} status={index === data.timeline.length - 1 ? "active" : "complete"} />) : <p className="research-muted">Timeline events will appear as the investigation progresses.</p>}
+        {data.timeline.length > 0 ? data.timeline.map((event, index) => <TimelineRow key={event.id ?? index} time={event.at ?? "—"} title={event.label ?? event.description ?? "Workflow event"} detail={event.detail ?? event.message} stage={event.stage} actor={event.actorClass ?? event.actor} eventStatus={event.status} status={index === data.timeline.length - 1 ? "active" : "complete"} />) : <p className="research-muted">Timeline events will appear as the investigation progresses.</p>}
         {activeStage >= 2 ? <LiveEpistemicPanel runId={runId} /> : null}
       </ResearchDrawer>
 
@@ -394,8 +434,20 @@ export function LiveWorkspace({ runId }: { runId: string }) {
         <ContextSummary run={run} runId={runId} status={status} sourceCount={usableDraftSources.length} />
       </ResearchDrawer>
 
+      <ResearchDrawer open={drawer === "claim-detail"} title="Claim contract" kicker="Scope review" onClose={closeDrawer}>
+        {selectedClaim ? <div className="research-evidence-detail"><blockquote>{selectedClaim.statement}</blockquote><dl><div><dt>Operational definition</dt><dd>{selectedClaim.operationalDefinition ?? "Not recorded"}</dd></div><div><dt>Role</dt><dd>{selectedClaim.role ?? selectedClaim.type ?? "Testable claim"}</dd></div><div><dt>Editing</dt><dd>Reviewable and immutable in this workflow</dd></div></dl></div> : null}
+      </ResearchDrawer>
+
+      <ResearchDrawer open={drawer === "source-detail"} title="Source record" kicker="Bibliography and rights" onClose={closeDrawer}>
+        {selectedSource ? <div className="research-evidence-detail"><blockquote>{selectedSource.bibliographicMetadata?.title ?? "Untitled source"}</blockquote><dl><div><dt>Authors</dt><dd>{selectedSource.bibliographicMetadata?.authors?.join(", ") || "Not recorded"}</dd></div><div><dt>Year / venue</dt><dd>{[selectedSource.bibliographicMetadata?.year, selectedSource.bibliographicMetadata?.venue].filter(Boolean).join(" / ") || "Not recorded"}</dd></div><div><dt>Provider</dt><dd>{selectedSource.access?.provider ?? "Not recorded"}</dd></div><div><dt>Rights</dt><dd>{selectedSource.rights?.permissionBasis ?? selectedSource.access?.license ?? "Not recorded"}</dd></div></dl></div> : null}
+      </ResearchDrawer>
+
       <ResearchDrawer open={drawer === "evidence-detail"} title="Evidence passage" kicker={selectedEvidence?.relationship ?? "Verification"} onClose={closeDrawer}>
         {selectedEvidence ? <div className="research-evidence-detail"><blockquote>“{selectedEvidence.excerpt}”</blockquote><dl><div><dt>Source passage</dt><dd>{selectedEvidence.sourceChunkId ?? "Not recorded"}</dd></div><div><dt>Claim</dt><dd>{selectedEvidence.subclaimId ?? "Not recorded"}</dd></div><div><dt>Passage check</dt><dd>{selectedEvidence.deterministicVerification?.excerptExists ? "Verified" : "Failed"}</dd></div><div><dt>Model assessment</dt><dd>{selectedEvidence.modelAssessment?.entailment ?? "Pending"}</dd></div><div><dt>Human review</dt><dd>{selectedEvidence.humanReview?.status ?? "Unreviewed"}</dd></div></dl></div> : null}
+      </ResearchDrawer>
+
+      <ResearchDrawer open={drawer === "objection-detail"} title="Review objection" kicker={selectedObjection?.severity ?? "Unresolved"} onClose={closeDrawer}>
+        {selectedObjection ? <div className="research-evidence-detail"><blockquote>{selectedObjection.rationale}</blockquote><dl><div><dt>Category</dt><dd>{selectedObjection.category ?? "Not recorded"}</dd></div><div><dt>Target</dt><dd>{selectedObjection.targetField ?? "Investigation"}</dd></div><div><dt>Disposition</dt><dd>{selectedObjection.disposition ?? "Unresolved"}</dd></div><div><dt>Consequence</dt><dd>Unresolved objections remain in the final audit record.</dd></div></dl></div> : null}
       </ResearchDrawer>
     </main>
   );
@@ -405,11 +457,11 @@ function PanelHeading({ icon, kicker, title }: { icon: React.ReactNode; kicker: 
   return <div className="research-panel-heading"><span>{icon}</span><div><p>{kicker}</p><h2>{title}</h2></div></div>;
 }
 
-function ScopePanel({ status, claims, onApprove, onRun }: { status: string; claims: JsonRecord[]; onApprove: () => void; onRun: () => void }) {
-  return <section className="research-panel research-focused-panel"><PanelHeading icon={<ShieldCheck size={18} />} kicker="Human checkpoint" title="Approve the claim boundary" /><div className="research-claim-list">{claims.map((claim, index) => <details className="research-claim-card" key={claim.id ?? index}><summary><span>Claim {String(index + 1).padStart(2, "0")}</span><h3>{claim.statement}</h3></summary><p>{claim.operationalDefinition}</p><StatusBadge status="needs-review">Needs review</StatusBadge></details>)}</div>{claims.length === 0 ? <div className="research-state-card"><FileText size={19} /><h3>No claims yet</h3><p>Shape the question into a testable contract.</p></div> : null}<div className="research-panel-actions">{status === "awaiting_scope_approval" ? <button type="button" className="research-button research-button-primary" onClick={onApprove}>Approve and collect sources <ArrowRight size={16} /></button> : <button type="button" className="research-button research-button-primary" onClick={onRun}>Shape claims <ArrowRight size={16} /></button>}</div></section>;
+function ScopePanel({ status, claims, onApprove, onRun, onSelect }: { status: string; claims: JsonRecord[]; onApprove: () => void; onRun: () => void; onSelect: (claim: JsonRecord, target: HTMLElement) => void }) {
+  return <section className="research-panel research-focused-panel"><PanelHeading icon={<ShieldCheck size={18} />} kicker="Human checkpoint" title="Review the claim contract" /><p className="research-panel-intro">Review the claim contract before EvidenceForge searches for sources. Claims are reviewable but immutable in this workflow.</p><div className="research-claim-list">{claims.map((claim, index) => <button type="button" className="research-claim-card" key={claim.id ?? index} onClick={(event) => onSelect(claim, event.currentTarget)}><span>Claim {String(index + 1).padStart(2, "0")}</span><strong>{claim.statement}</strong><small>{claim.role ?? claim.type ?? "Testable claim"}</small><StatusBadge status="needs-review">Needs review</StatusBadge><ArrowRight size={15} aria-hidden="true" /></button>)}</div>{claims.length === 0 ? <div className="research-state-card"><FileText size={19} /><h3>No claims yet</h3><p>Shape the question into a testable contract.</p></div> : null}<div className="research-sticky-action"><span><ShieldCheck size={15} /> Approval starts scholarly source collection</span>{status === "awaiting_scope_approval" ? <button type="button" className="research-button research-button-primary" onClick={onApprove}>Approve and collect sources <ArrowRight size={16} /></button> : <button type="button" className="research-button research-button-primary" onClick={onRun}>Shape claims <ArrowRight size={16} /></button>}</div></section>;
 }
 
-function SourceLedger({ entries, passages, claims, pending, onRemove }: { entries: JsonRecord[]; passages: JsonRecord[]; claims: JsonRecord[]; pending: boolean; onRemove: (id: string) => Promise<void> }) {
+export function LegacySourceLedger({ entries, passages, claims, pending, onRemove }: { entries: JsonRecord[]; passages: JsonRecord[]; claims: JsonRecord[]; pending: boolean; onRemove: (id: string) => Promise<void> }) {
   const claimNumber = new Map(claims.map((claim, index) => [claim.id, index + 1]));
   return <div className="research-source-ledger"><div className="research-ledger-header"><h3>Packet ledger</h3><span>{entries.length} sources · {passages.length} {pending ? "awaiting verification" : "verified"}</span></div>{entries.length > 0 ? entries.map((entry, index) => { const source = entry.source ?? {}; const sourcePassages = passages.filter((passage) => passage.sourceId === source.id); const preview = sourcePassages[0]?.excerpt; const claimLabels = [...new Set(sourcePassages.map((passage) => claimNumber.get(passage.subclaimId ?? passage.claimId)).filter(Boolean))].map((number) => `Claim ${number}`).join(", "); return <div className="research-source-row" key={source.id ?? index}><span className="research-source-index">{String(index + 1).padStart(2, "0")}</span><div><strong>{source.bibliographicMetadata?.title ?? "Untitled source"}</strong><p>{sourcePassages.length} {pending ? "awaiting verification" : "dual-verified"} · {claimLabels || "Claim pending"}{preview ? ` · “${String(preview).slice(0, 110)}${String(preview).length > 110 ? "…" : ""}”` : ""}</p></div><button type="button" className="research-icon-button" aria-label={`Remove ${source.bibliographicMetadata?.title ?? "source"}`} onClick={() => void onRemove(source.id)}><Trash2 size={15} /></button></div>; }) : <div className="research-ledger-empty"><BookOpen size={18} /><p>No verified passages yet. Build the packet automatically.</p></div>}</div>;
 }

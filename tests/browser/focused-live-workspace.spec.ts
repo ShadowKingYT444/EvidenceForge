@@ -64,10 +64,18 @@ test("keeps source collection focused and moves secondary tools into drawers", a
   await page.goto(`/runs/${runId}`);
 
   await expect(page.getByRole("heading", { level: 1, name: /reward hacking/i })).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Collect the signal" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Search scholarly sources" })).toBeVisible();
+  await expect(page.getByRole("region", { name: "Evidence collection pipeline" })).toContainText("Independent review");
+  await expect(page.getByRole("table", { name: "Retained scholarly sources and passage verification" })).toBeVisible();
   await expect(page.getByRole("progressbar", { name: "Dual-model verified passages" })).toHaveAttribute("aria-valuenow", "4");
   await expect(page.getByRole("button", { name: "Search deeper" })).toBeVisible();
   await expect(page.getByRole("button", { name: /Freeze/ })).toHaveCount(0);
+  const questionStyle = await page.getByRole("heading", { level: 1, name: /reward hacking/i }).evaluate((element) => {
+    const style = getComputedStyle(element);
+    return { overflow: style.overflow, lineClamp: style.getPropertyValue("-webkit-line-clamp") };
+  });
+  expect(questionStyle.overflow).toBe("visible");
+  expect(questionStyle.lineClamp === "none" || questionStyle.lineClamp === "").toBe(true);
   await page.screenshot({ path: testInfo.outputPath("source-workspace-desktop.png"), fullPage: true });
 
   await page.getByRole("button", { name: "Add a source" }).click();
@@ -87,7 +95,30 @@ test("keeps source collection focused and moves secondary tools into drawers", a
   await page.setViewportSize({ width: 390, height: 844 });
   await expect(page.getByRole("navigation", { name: "Investigation stages" })).toBeVisible();
   await page.screenshot({ path: testInfo.outputPath("source-workspace-mobile.png"), fullPage: true });
-  expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
+  const mobileOverflow = await page.evaluate(() => {
+    const clientWidth = document.documentElement.clientWidth;
+    const offenders = [...document.querySelectorAll<HTMLElement>("body *")].map((element) => {
+      const rect = element.getBoundingClientRect();
+      return { tag: element.tagName, className: element.className, left: rect.left, right: rect.right, width: rect.width };
+    }).filter((rect) => rect.right > clientWidth + 1 || rect.left < -1).slice(0, 8);
+    return { clientWidth, scrollWidth: document.documentElement.scrollWidth, offenders };
+  });
+  expect(mobileOverflow.scrollWidth, JSON.stringify(mobileOverflow)).toBeLessThanOrEqual(mobileOverflow.clientWidth + 1);
+});
+
+test("keeps the reconstructed workbench within every supported desktop viewport", async ({ page }) => {
+  await mockSourceWorkspace(page);
+  for (const viewport of [
+    { width: 1024, height: 768 },
+    { width: 1280, height: 800 },
+    { width: 1440, height: 900 },
+    { width: 1920, height: 1080 },
+    { width: 2560, height: 1440 },
+  ]) {
+    await page.setViewportSize(viewport);
+    await page.goto(`/runs/${runId}`);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth + 1)).toBe(true);
+  }
 });
 
 test("retains pending passages and retries provider verification without relabeling them rejected", async ({ page }) => {

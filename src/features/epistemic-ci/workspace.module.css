@@ -427,6 +427,25 @@
 .liveEntrySignal i:nth-child(3) { right: 10%; bottom: 24%; background: var(--ef-success); }
 .liveEntrySignal span { position: absolute; left: 24%; top: 46%; width: 58%; height: 1px; background: linear-gradient(90deg, var(--ef-cyan), var(--ef-primary), var(--ef-success)); rotate: -18deg; transform-origin: left; }
 
+.workspace { background: radial-gradient(circle at 14% 12%, rgb(124 140 255 / 9%), transparent 28rem), var(--ef-bg); background-size: auto; }
+.liveEntry { width: min(100% - 2.5rem, 88rem); }
+.liveEntryGrid { grid-template-columns: minmax(22rem, .9fr) minmax(28rem, 1.1fr); gap: clamp(3rem, 7vw, 7rem); }
+.liveEntryCopy h1 { max-width: 14ch; font-size: clamp(3.25rem, 4.5vw, 4rem); line-height: .96; }
+.liveEntryCopy > p { max-width: 33rem; font-size: .95rem; line-height: 1.6; }
+.liveEntryForm { padding: 1.25rem; background: rgb(13 19 31 / 96%); box-shadow: 0 24px 70px rgb(0 0 0 / 26%); }
+.workflowPreview { display: flex; flex-wrap: wrap; gap: .35rem; margin: 2rem 0 0; padding: 0; list-style: none; }
+.workflowPreview li { display: inline-flex; align-items: center; gap: .38rem; color: var(--ef-muted); font-size: .65rem; }
+.workflowPreview li:not(:last-child)::after { margin-left: .1rem; color: var(--ef-quiet); content: "/"; }
+.workflowPreview li span { width: 1.35rem; height: 1.35rem; display: grid; place-items: center; border: 1px solid var(--ef-line-strong); border-radius: 50%; color: var(--ef-text-soft); font: .54rem var(--font-geist-mono), monospace; }
+.entryProof { display: grid; gap: .48rem; margin-top: 1.4rem; color: var(--ef-muted); font-size: .68rem; }
+.entryProof span { display: flex; align-items: center; gap: .45rem; }
+.entryProof svg { color: var(--ef-success); }
+.examplePrompts { display: flex; flex-wrap: wrap; gap: .38rem; }
+.examplePrompts button { min-height: 2rem; padding: .35rem .55rem; border: 1px solid var(--ef-line); border-radius: var(--ef-radius-sm); background: transparent; color: var(--ef-muted); font-size: .61rem; cursor: pointer; }
+.examplePrompts button:hover:not(:disabled) { border-color: var(--ef-primary); background: rgb(124 140 255 / 8%); color: var(--ef-text); }
+.sessionTrust { display: flex; flex-wrap: wrap; justify-content: space-between; gap: .5rem; padding-top: .1rem; color: var(--ef-quiet); font-size: .58rem; }
+.sessionTrust span { display: inline-flex; align-items: center; gap: .35rem; }
+
 @media (max-width: 48rem) {
   .liveEntry { width: min(100% - 1.25rem, 78rem); }
   .liveEntryGrid { display: block; min-height: auto; padding: clamp(3.5rem, 12vh, 6rem) 0 2rem; }

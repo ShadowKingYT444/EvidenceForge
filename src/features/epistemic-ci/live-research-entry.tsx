@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowRight, LoaderCircle, Play, Sparkles } from "lucide-react";
+import { ArrowRight, Check, Clock3, LoaderCircle, LockKeyhole, Play, ShieldCheck } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { type FormEvent, useState } from "react";
 
@@ -89,6 +89,11 @@ export function LiveResearchEntry({ onUseDemo }: { onUseDemo: () => void }) {
   }
 
   const busy = state === "creating" || state === "decomposing";
+  const examples = [
+    { label: "Retrieval and hallucination", question: "Does retrieval-augmented generation reduce factual hallucination compared with the same model without retrieval?", application: "Choose an evidence-grounding architecture for a research assistant." },
+    { label: "Independent model review", question: "Does an independent evaluator reduce reward hacking in sparse-data model evaluation?", application: "Choose an evaluator architecture for model training." },
+    { label: "Cold-weather storage", question: "Does sodium-ion storage improve cold-weather reliability for remote sensor deployments?", application: "Choose a storage chemistry for a remote monitoring system." },
+  ];
 
   return (
     <main className={styles.workspace}>
@@ -105,14 +110,24 @@ export function LiveResearchEntry({ onUseDemo }: { onUseDemo: () => void }) {
 
         <div className={styles.liveEntryGrid}>
           <div className={styles.liveEntryCopy}>
-            <span className={styles.eyebrow}><Sparkles aria-hidden="true" size={13} /> Evidence, compiled</span>
-            <h1>What should we test?</h1>
-            <p>Turn a real question into an evidence-bound decision.</p>
+            <span className={styles.eyebrow}>Auditable research workflow</span>
+            <h1>Test a claim against the evidence.</h1>
+            <p>EvidenceForge searches scholarly literature, verifies exact passages, and records every model and human decision.</p>
+            <ol className={styles.workflowPreview} aria-label="Investigation workflow">
+              {["Scope", "Sources", "Evidence", "Review", "Decision"].map((step, index) => <li key={step}><span>{index + 1}</span>{step}</li>)}
+            </ol>
+            <div className={styles.entryProof}>
+              <span><ShieldCheck aria-hidden="true" size={14} /> Exact text and provenance retained</span>
+              <span><Check aria-hidden="true" size={14} /> Independent review stays inspectable</span>
+            </div>
           </div>
 
           <form className={styles.liveEntryForm} onSubmit={submit}>
-            <div className={styles.formMeta}><span>New investigation</span><span><i /> Private session</span></div>
+            <div className={styles.formMeta}><span>New investigation</span><span>Research brief</span></div>
             <p className={styles.liveEntryNotice}>Runs are process-local and may expire or disappear when the server restarts. Export important results.</p>
+            <div className={styles.examplePrompts} aria-label="Prompt examples">
+              {examples.map((example) => <button key={example.label} type="button" disabled={busy} onClick={() => { setQuestion(example.question); setApplication(example.application); }}>{example.label}</button>)}
+            </div>
             <label className={styles.questionField}>
               Research question
               <textarea required rows={4} value={question} onChange={(event) => setQuestion(event.target.value)} placeholder="Can retrieval prevent reward hacking in sparse-data evaluation?" />
@@ -130,10 +145,13 @@ export function LiveResearchEntry({ onUseDemo }: { onUseDemo: () => void }) {
             </details>
             {state === "error" ? <p className={styles.liveEntryError} role="alert">{error}</p> : null}
             <button className={styles.primaryButton} type="submit" disabled={busy || !question.trim() || !application.trim()}>
-              {busy ? <><LoaderCircle aria-hidden="true" size={16} /> {state === "creating" ? "Creating private run…" : "Shaping claims…"}</> : <>Start research <ArrowRight aria-hidden="true" size={16} /></>}
+              {busy ? <><LoaderCircle aria-hidden="true" size={16} /> {state === "creating" ? "Creating investigation..." : "Shaping claims..."}</> : <>Start investigation <ArrowRight aria-hidden="true" size={16} /></>}
             </button>
+            <div className={styles.sessionTrust}>
+              <span><LockKeyhole aria-hidden="true" size={13} /> Process-local session</span>
+              <span><Clock3 aria-hidden="true" size={13} /> May expire when the server restarts</span>
+            </div>
           </form>
-          <div className={styles.liveEntrySignal} aria-hidden="true"><i /><i /><i /><span /></div>
         </div>
       </section>
       <ProviderOnboarding />

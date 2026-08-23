@@ -6,8 +6,8 @@ import "./globals.css";
 import "./midnight.css";
 
 export const metadata: Metadata = {
-  title: "EvidenceForge · Epistemic CI",
-  description: "Continuous integration for evidence-backed decisions.",
+  title: "EvidenceForge | Auditable research workflow",
+  description: "Scholarly research with exact passages, provenance, independent review, and accountable decisions.",
 };
 
 const geistSans = Geist({

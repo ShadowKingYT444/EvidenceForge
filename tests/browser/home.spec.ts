@@ -7,13 +7,15 @@ const axeScriptPath = requireFromA11yPlugin.resolve("axe-core/axe.min.js");
 
 test("opens live bounded research on the normal route with a deterministic fallback", async ({ page }) => {
   await page.goto("/");
-  await expect(page.getByRole("heading", { level: 1, name: /What should we test/ })).toBeVisible();
-  await expect(page.getByRole("button", { name: /Start research/ })).toBeVisible();
+  await expect(page.getByRole("heading", { level: 1, name: /Test a claim against the evidence/ })).toBeVisible();
+  await expect(page.getByRole("button", { name: /Start investigation/ })).toBeVisible();
   await expect(page.getByRole("button", { name: /Try the demo/ })).toBeVisible();
-  await expect(page.getByText(/Turn a real question into an evidence-bound decision/i)).toBeVisible();
+  await expect(page.getByText(/searches scholarly literature, verifies exact passages/i)).toBeVisible();
+  await expect(page.getByRole("list", { name: "Investigation workflow" })).toContainText("Scope");
 });
 
 test("starts a private live run from the default workspace entry", async ({ page }) => {
+  await page.route("**/api/health", (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ status: "ok", evidenceMode: "live", liveInvestigationsReady: true, reasonCodes: [] }) }));
   await page.route("**/api/runs", async (route) => {
     if (route.request().method() !== "POST") return route.continue();
     await route.fulfill({
@@ -32,7 +34,7 @@ test("starts a private live run from the default workspace entry", async ({ page
   await page.goto("/");
   await page.getByLabel("Research question").fill("Does a sodium-ion battery improve cold-weather storage reliability?");
   await page.getByLabel("Decision this will inform").fill("Choose a storage chemistry for a remote sensor design.");
-  await page.getByRole("button", { name: /Start research/ }).click();
+  await page.getByRole("button", { name: /Start investigation/ }).click();
   await expect(page).toHaveURL(/\/runs\/live-browser-run$/);
 });
 

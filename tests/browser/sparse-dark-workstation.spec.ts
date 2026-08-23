@@ -5,7 +5,8 @@ import { expectContainedFocus } from "./focus-boundary";
 test.describe("Sparse dark workstation", () => {
   test("keeps the demo entry and scope preview compact", async ({ page }, testInfo) => {
     await page.goto("/");
-    await expect(page.getByRole("heading", { name: "Connect a model provider" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Test a claim against the evidence." })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Test a model-provider key" })).toBeVisible();
     await expect(page.getByRole("link", { name: /Use recorded fixture/ })).toHaveAttribute("href", "/intake?demo=golden");
     await expect(page.getByRole("link", { name: "Inspect the evidence chain" })).toHaveCount(0);
 

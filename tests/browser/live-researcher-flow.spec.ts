@@ -7,11 +7,12 @@ test("opens a focused research composer without marketing clutter", async ({ pag
   });
 
   await page.goto("/");
-  await expect(page.getByRole("heading", { name: /What should we test/i })).toBeVisible();
+  await expect(page.getByRole("heading", { name: /Test a claim against the evidence/i })).toBeVisible();
   await expect(page.getByLabel("Research question")).toBeVisible();
   await expect(page.getByLabel("Decision this will inform")).toBeVisible();
   await expect(page.getByText("Add boundaries")).toBeVisible();
   await expect(page.getByRole("button", { name: /Try the demo/i })).toBeVisible();
+  await expect(page.getByLabel("Prompt examples").getByRole("button")).toHaveCount(3);
   expect(errors).toEqual([]);
 });
 
@@ -48,7 +49,7 @@ test("blocks run creation when live scholarly search is not configured", async (
   await page.goto("/");
   await page.getByLabel("Research question").fill("Does bounded retrieval improve factual reliability in technical assistants?");
   await page.getByLabel("Decision this will inform").fill("Choose a retrieval architecture.");
-  await page.getByRole("button", { name: /Start research/i }).click();
+  await page.getByRole("button", { name: /Start investigation/i }).click();
   await expect(page.getByText("Live scholarly search is not configured.", { exact: true })).toBeVisible();
   expect(createRequests).toBe(0);
   await expect(page.getByRole("button", { name: /Try the demo/i })).toBeVisible();
