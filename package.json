@@ -12,6 +12,7 @@
     "start": "next start",
     "typecheck": "next typegen && tsc --noEmit",
     "lint": "eslint .",
+    "diagnose:live": "node scripts/diagnose-live.mjs",
     "unit": "vitest run",
     "unit:watch": "vitest",
     "browser": "playwright test"

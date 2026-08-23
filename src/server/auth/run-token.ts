@@ -1,7 +1,17 @@
 import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 
+import { EnvironmentValidationError, type EnvironmentSource } from "../environment";
+
 export const RUN_TOKEN_COOKIE = "evidenceforge_run_token";
 export const RUN_TOKEN_TTL_SECONDS = 60 * 60 * 24 * 30;
+const DEVELOPMENT_RUN_TOKEN_SECRET = "evidenceforge-local-development-token-secret";
+
+export function readRunTokenSecret(source: EnvironmentSource = process.env): string {
+  const configured = source.RUN_TOKEN_SECRET?.trim();
+  if (configured) return configured;
+  if (source.NODE_ENV === "production") throw new EnvironmentValidationError(["RUN_TOKEN_SECRET"]);
+  return DEVELOPMENT_RUN_TOKEN_SECRET;
+}
 
 export function createRunToken(): string {
   return randomBytes(32).toString("base64url");

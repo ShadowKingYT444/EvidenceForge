@@ -78,7 +78,7 @@ export function ProviderOnboarding() {
   }
 
   return (
-    <main className="provider-shell">
+    <section className="provider-shell">
       <header className="provider-header">
         <Link className="provider-brand" href="/" aria-label="EvidenceForge home">
           <span className="brand-glyph" aria-hidden="true"><i /><i /><i /></span>
@@ -163,6 +163,6 @@ export function ProviderOnboarding() {
           </form>
         ) : null}
       </dialog>
-    </main>
+    </section>
   );
 }

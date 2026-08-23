@@ -18,6 +18,7 @@ test("opens a focused research composer without marketing clutter", async ({ pag
 test("creates a private investigation instead of opening the battery fixture", async ({ page }) => {
   const runId = "ai-reliability-run";
   const question = "Does retrieval-augmented generation reduce factual hallucination in knowledge-grounded language generation compared with the same model without retrieval?";
+  await page.route("**/api/health", (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ status: "ok", evidenceMode: "live", liveInvestigationsReady: true, reasonCodes: [] }) }));
   await page.route("**/api/runs", async (route) => {
     if (route.request().method() !== "POST") return route.fallback();
     await route.fulfill({ status: 201, contentType: "application/json", body: JSON.stringify({ run: { id: runId }, revision: "revision-1" }) });
@@ -38,4 +39,17 @@ test("creates a private investigation instead of opening the battery fixture", a
   await expect(page.getByText("Live", { exact: true })).toBeVisible();
   await expect(page.getByRole("heading", { level: 1, name: /retrieval-augmented generation/i })).toBeVisible();
   await expect(page.getByText(/golden fixture|72-hour environmental sensor/iu)).toHaveCount(0);
+});
+
+test("blocks run creation when live scholarly search is not configured", async ({ page }) => {
+  let createRequests = 0;
+  await page.route("**/api/health", (route) => route.fulfill({ status: 503, contentType: "application/json", body: JSON.stringify({ status: "degraded", evidenceMode: "live", liveInvestigationsReady: false, reasonCodes: ["openalex_key_missing"] }) }));
+  await page.route("**/api/runs", async (route) => { createRequests += 1; await route.fulfill({ status: 500 }); });
+  await page.goto("/");
+  await page.getByLabel("Research question").fill("Does bounded retrieval improve factual reliability in technical assistants?");
+  await page.getByLabel("Decision this will inform").fill("Choose a retrieval architecture.");
+  await page.getByRole("button", { name: /Start research/i }).click();
+  await expect(page.getByText("Live scholarly search is not configured.", { exact: true })).toBeVisible();
+  expect(createRequests).toBe(0);
+  await expect(page.getByRole("button", { name: /Try the demo/i })).toBeVisible();
 });

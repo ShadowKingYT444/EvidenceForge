@@ -4,6 +4,7 @@ import { ArrowRight, LoaderCircle, Play, Sparkles } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { type FormEvent, useState } from "react";
 
+import { ProviderOnboarding } from "../providers/onboarding";
 import styles from "./workspace.module.css";
 
 type CreatedRun = {
@@ -11,6 +12,12 @@ type CreatedRun = {
   revision?: string;
   snapshot?: { run?: { id?: string }; revision?: string };
   error?: { message?: string };
+};
+
+type HealthState = {
+  evidenceMode?: "fixture" | "live" | "invalid";
+  liveInvestigationsReady?: boolean;
+  reasonCodes?: string[];
 };
 
 export function LiveResearchEntry({ onUseDemo }: { onUseDemo: () => void }) {
@@ -27,6 +34,17 @@ export function LiveResearchEntry({ onUseDemo }: { onUseDemo: () => void }) {
     setState("creating");
     setError("");
     try {
+      const healthResponse = await fetch("/api/health", { cache: "no-store" });
+      const health = await healthResponse.json().catch(() => ({})) as HealthState;
+      if (!healthResponse.ok || health.evidenceMode !== "live" || !health.liveInvestigationsReady) {
+        if (health.evidenceMode === "fixture") {
+          throw new Error("Fixture/demo mode is active. Live investigations are unavailable; use Try the demo.");
+        }
+        if (health.reasonCodes?.includes("openalex_key_missing")) {
+          throw new Error("Live scholarly search is not configured.");
+        }
+        throw new Error("Live model providers are not configured.");
+      }
       const createdResponse = await fetch("/api/runs", {
         method: "POST",
         headers: { "content-type": "application/json" },
@@ -94,6 +112,7 @@ export function LiveResearchEntry({ onUseDemo }: { onUseDemo: () => void }) {
 
           <form className={styles.liveEntryForm} onSubmit={submit}>
             <div className={styles.formMeta}><span>New investigation</span><span><i /> Private session</span></div>
+            <p className={styles.liveEntryNotice}>Runs are process-local and may expire or disappear when the server restarts. Export important results.</p>
             <label className={styles.questionField}>
               Research question
               <textarea required rows={4} value={question} onChange={(event) => setQuestion(event.target.value)} placeholder="Can retrieval prevent reward hacking in sparse-data evaluation?" />
@@ -117,6 +136,7 @@ export function LiveResearchEntry({ onUseDemo }: { onUseDemo: () => void }) {
           <div className={styles.liveEntrySignal} aria-hidden="true"><i /><i /><i /><span /></div>
         </div>
       </section>
+      <ProviderOnboarding />
     </main>
   );
 }
