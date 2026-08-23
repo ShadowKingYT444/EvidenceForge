@@ -570,4 +570,40 @@ describe("automatic research collection", () => {
     expect(result.draft.verification?.passages.length).toBeGreaterThan(0);
     expect(result.draft.verification?.passages.every(({ sourceType, settingAndSample }) => sourceType === "technical" && settingAndSample === null)).toBe(true);
   });
+
+  it("uses licensed Firecrawl results alongside valid-empty OpenAlex discovery", async () => {
+    const run = focusedRun();
+    const result = await collectAutomaticResearchPacket({
+      run,
+      currentDraft: { sources: [] },
+      openAlexApiKey: "openalex-test",
+      firecrawlApiKey: "firecrawl-test",
+      adapters: { primary: adapter("groq"), reviewer: adapter("nvidia_nim"), fallback: null, evidenceMode: "live" },
+      search: async (query) => ({ provider: "openalex", query, candidates: [], raw: { status: "completed", failureCode: null, pagination: { pagesFetched: 1, truncated: false } } as never }),
+      webSearch: async (query) => ({
+        provider: "firecrawl",
+        query,
+        candidates: [{ id: "firecrawl-licensed-source", url: "https://research.example/licensed", title: `${query} licensed technical report`, description: `${query} direct evidence`, markdown: `This licensed report directly evaluates ${query} and reports a bounded outcome.\n\nA second licensed passage explains the mechanism for ${query} and its limitations.`, category: "research", license: "CC BY 4.0", canonicalDoi: null, authors: ["Researcher"], publicationYear: 2025, rightsEligible: true }],
+        raw: { status: "completed", failureCode: null, httpStatus: 200, pagination: { pagesFetched: 1, truncated: false } },
+      }),
+    });
+    expect(result.draft.sources).toEqual([expect.objectContaining({ source: expect.objectContaining({ id: "firecrawl-licensed-source", access: expect.objectContaining({ provider: "firecrawl" }) }) })]);
+    expect(result.draft.verification?.passages.length).toBeGreaterThan(0);
+    expect(result.draft.verification?.searchAudits.some(({ provider }) => provider === "firecrawl")).toBe(true);
+  });
+
+  it("surfaces Firecrawl provider failure without relabeling valid-empty OpenAlex as a shortfall", async () => {
+    const run = focusedRun();
+    const result = await collectAutomaticResearchPacket({
+      run,
+      currentDraft: { sources: [] },
+      openAlexApiKey: "openalex-test",
+      firecrawlApiKey: "firecrawl-test",
+      adapters: { primary: adapter("groq"), reviewer: adapter("nvidia_nim"), fallback: null, evidenceMode: "live" },
+      search: async (query) => ({ provider: "openalex", query, candidates: [], raw: { status: "completed", failureCode: null, pagination: { pagesFetched: 1, truncated: false } } as never }),
+      webSearch: async (query) => ({ provider: "firecrawl", query, candidates: [], raw: { status: "failed", failureCode: "rate_limited", httpStatus: 429, pagination: { pagesFetched: 0, truncated: false } } }),
+    });
+    expect(result.status).toBe("provider_unavailable");
+    expect(result.providerFailures.some(({ provider, code }) => provider === "firecrawl" && code === "rate_limited")).toBe(true);
+  });
 });
