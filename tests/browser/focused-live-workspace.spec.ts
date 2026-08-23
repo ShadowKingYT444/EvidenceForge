@@ -63,7 +63,7 @@ test("keeps source collection focused and moves secondary tools into drawers", a
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto(`/runs/${runId}`);
 
-  await expect(page.getByRole("heading", { name: /reward hacking/i })).toBeVisible();
+  await expect(page.getByRole("heading", { level: 1, name: /reward hacking/i })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Collect the signal" })).toBeVisible();
   await expect(page.getByRole("progressbar", { name: "Dual-model verified passages" })).toHaveAttribute("aria-valuenow", "4");
   await expect(page.getByRole("button", { name: "Search deeper" })).toBeVisible();
@@ -123,8 +123,8 @@ test("retains pending passages and retries provider verification without relabel
   });
 
   await page.goto(`/runs/${pendingRunId}`);
-  await expect(page.getByText("9 passages are saved and awaiting model verification. Retrieval will not be repeated.")).toBeVisible();
-  await expect(page.getByText(/groq rate limited \(9 awaiting\)/i)).toBeVisible();
+  await expect(page.getByText("0 verified passages are preserved; 9 unresolved passages are awaiting provider recovery.")).toBeVisible();
+  await expect(page.getByText(/groq rate limited \(9 affected\)/i)).toBeVisible();
   await expect(page.getByRole("button", { name: "Retry verification" })).toBeVisible();
   await expect(page.getByText(/9 awaiting verification/)).toBeVisible();
   await page.getByRole("button", { name: "Retry verification" }).click();

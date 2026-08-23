@@ -38,9 +38,9 @@ export async function searchRunSources(request: Request, context: Context): Prom
     const query = new URL(request.url).searchParams.get("query") ?? "";
     const parsed = OpenAlexSearchRequestSchema.parse({ query, maxResults: 10 });
     const apiKey = process.env.OPENALEX_API_KEY?.trim();
-    const result = await searchScholarlyWorks(parsed.query, { apiKey });
+    const result = await searchScholarlyWorks(parsed.query, { apiKey, limits: { maxResults: parsed.maxResults, pageSize: parsed.maxResults, maxPages: 2 } });
     return Response.json(
-      { provider: "openalex", query: result.query, candidates: result.candidates },
+      { provider: "openalex", query: result.query, candidates: result.candidates, providerStatus: result.raw.status, failureCode: result.raw.failureCode, partial: result.raw.status === "partial" },
       { headers: { "cache-control": "private, no-store" } },
     );
   } catch (error) {
@@ -311,8 +311,13 @@ export async function freezeRunPacket(request: Request, context: Context): Promi
     if (verification?.status !== "ready" || verification.passages.length !== 10 || verification.claimsMissing.length > 0) {
       throw new Error("packet_not_ready: ten dual-model verified passages covering every claim are required before freeze");
     }
-    const sources = new Map(usable.map(({ source }) => [source.id, source]));
-    const chunks = new Map(usable.flatMap(({ chunks: entryChunks }) => entryChunks).map((chunk) => [chunk.id, chunk]));
+    const allSources = usable.map(({ source }) => source);
+    const allChunks = usable.flatMap(({ chunks: entryChunks }) => entryChunks);
+    const sources = new Map(allSources.map((source) => [source.id, source]));
+    const chunks = new Map(allChunks.map((chunk) => [chunk.id, chunk]));
+    if (sources.size !== allSources.length || chunks.size !== allChunks.length) {
+      throw new Error("packet_not_ready: duplicate source or chunk identity would overwrite frozen evidence");
+    }
     for (const passage of verification.passages) {
       const source = sources.get(passage.sourceId);
       const chunk = chunks.get(passage.sourceChunkId);

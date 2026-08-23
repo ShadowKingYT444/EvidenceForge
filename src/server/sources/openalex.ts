@@ -31,6 +31,7 @@ export type ScholarlySearchDependencies = {
   apiKey?: string;
   fetch?: typeof fetch;
   evidenceMode?: "live" | "mocked" | "fixture";
+  limits?: Partial<{ maxResults: number; pageSize: number; maxPages: number; deadlineMs: number }>;
 };
 
 export async function searchScholarlyWorks(query: string, dependencies: ScholarlySearchDependencies): Promise<{
@@ -39,7 +40,7 @@ export async function searchScholarlyWorks(query: string, dependencies: Scholarl
   const client = createOpenAlexDiscoveryClient({
     apiKey: dependencies.apiKey, evidenceMode: dependencies.evidenceMode ?? "live",
     fetch: dependencies.fetch === undefined ? undefined : (input, init) => dependencies.fetch!(input, init),
-    limits: { maxResults: 10, pageSize: 10, maxPages: 1 },
+    limits: { maxResults: 40, pageSize: 25, maxPages: 2, ...dependencies.limits },
   });
   const raw = await client.discover(query);
   return { provider: "openalex", query, candidates: raw.candidates.map(normalizeOpenAlexCandidate), raw };

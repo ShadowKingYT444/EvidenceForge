@@ -9,7 +9,9 @@ describe("scholarly ingestion building blocks", () => {
     const input = { sourceId: "source-1", claim: "retrieval reduces hallucination", text: "Methods describe sampling.\n\nRetrieval reduces factual hallucination in grounded generation.\n\nLimitations discuss noisy retrieval." };
     const first = rankClaimChunks(input);
     expect(first[0]?.text).toContain("Retrieval reduces");
-    expect(first.map((chunk) => chunk.id)).toEqual(["source-1-chunk-1", "source-1-chunk-2"]);
+    expect(first.map((chunk) => chunk.id)).toEqual(rankClaimChunks(input).map((chunk) => chunk.id));
+    expect(new Set(first.map((chunk) => chunk.id)).size).toBe(first.length);
+    expect(first.every(({ id }) => /^source-1-chunk-[a-f0-9]{20}-p\d+$/u.test(id))).toBe(true);
     expect(first.every(({ score }) => score > 0)).toBe(true);
     expect(rankClaimChunks({ ...input, maxChunks: 1 })).toHaveLength(1);
   });
