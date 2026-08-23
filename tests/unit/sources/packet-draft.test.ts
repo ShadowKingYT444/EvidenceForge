@@ -16,16 +16,30 @@ describe("packet draft helpers", () => {
   it("enforces the twenty-source draft ceiling and supports removal", () => {
     let draft: unknown = { sources: [] };
     for (let index = 0; index < 20; index += 1) {
-      const source = { ...entry(0), source: { ...entry(0).source, id: `draft-source-${index}` } };
+      const sourceId = `draft-source-${index}`;
+      const source = { ...entry(0), source: { ...entry(0).source, id: sourceId }, chunks: entry(0).chunks.map((chunk) => ({ ...chunk, id: `${sourceId}-${chunk.id}`, sourceId })) };
       draft = addDraftSource(draft, source);
     }
     expect(PacketDraftSchema.parse(draft).sources).toHaveLength(20);
-    expect(() => addDraftSource(draft, { ...entry(0), source: { ...entry(0).source, id: "twenty-first-source" } })).toThrow();
+    expect(() => addDraftSource(draft, { ...entry(0), source: { ...entry(0).source, id: "twenty-first-source" }, chunks: entry(0).chunks.map((chunk) => ({ ...chunk, id: `twenty-first-source-${chunk.id}`, sourceId: "twenty-first-source" })) })).toThrow();
     expect(removeDraftSource(draft, "draft-source-3").sources).toHaveLength(19);
   });
 
   it("rejects malformed entries and duplicate source IDs in a raw draft", () => {
     expect(() => addDraftSource({ sources: [] }, { ...entry(0), importedAt: "not-a-timestamp" })).toThrow();
     expect(() => PacketDraftSchema.parse({ sources: [entry(0), entry(0)] })).toThrow(/unique/i);
+  });
+
+  it("rejects global chunk collisions and containing-source mismatches before maps can overwrite", () => {
+    const first = entry(0);
+    const second = structuredClone(entry(0));
+    second.source.id = "second-source";
+    second.chunks.forEach((chunk) => { chunk.sourceId = second.source.id; });
+    second.chunks[0]!.id = first.chunks[0]!.id;
+    expect(() => PacketDraftSchema.parse({ sources: [first, second] })).toThrow(/chunk IDs must be globally unique/i);
+
+    const mismatched = structuredClone(entry(0));
+    mismatched.chunks[0]!.sourceId = "different-source";
+    expect(() => PacketDraftSchema.parse({ sources: [mismatched] })).toThrow(/containing source/i);
   });
 });
