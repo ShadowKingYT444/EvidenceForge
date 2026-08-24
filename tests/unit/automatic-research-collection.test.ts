@@ -284,17 +284,27 @@ describe("automatic research collection", () => {
   it("retries saved passages without repeating search or import work", async () => {
     const dependencies = automaticDependencies();
     const run = focusedRun();
+    let primaryCalls = 0;
+    const unavailablePrimary = failingAdapter("groq");
+    const countedUnavailablePrimary: StructuredGenerationAdapter = {
+      ...unavailablePrimary,
+      async generate(request) {
+        if (request.promptId === "claim-grounded-passage-admission") primaryCalls += 1;
+        return unavailablePrimary.generate(request);
+      },
+    };
     const first = await collectAutomaticResearchPacket({
       run,
       currentDraft: { sources: [] },
       openAlexApiKey: "test-key",
-      adapters: { primary: failingAdapter("groq"), reviewer: adapter("nvidia_nim"), fallback: null, evidenceMode: "live" },
+      adapters: { primary: countedUnavailablePrimary, reviewer: adapter("nvidia_nim"), fallback: null, evidenceMode: "live" },
       ...dependencies,
     });
     expect(first.status).toBe("provider_unavailable");
     expect(first.pendingPassages).toBeGreaterThan(0);
     expect(first.rejectionCounts.primaryRejected).toBe(0);
     expect(first.providerFailures.every(({ stage }) => stage === "primary_admission")).toBe(true);
+    expect(primaryCalls).toBe(Math.ceil(first.pendingPassages / MODEL_BATCH_MAX_ITEMS));
 
     const retried = await collectAutomaticResearchPacket({
       run,

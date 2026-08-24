@@ -630,6 +630,15 @@ async function runEvaluationStage(input: {
   let queue = input.items;
   const all: Array<WorkerAuditResult<PassageEvaluationResult>> = [];
   const terminal: Array<WorkerAuditResult<PassageEvaluationResult>> = [];
+  const retryableFailure = (error: unknown) =>
+    error instanceof CollectionGenerationFailure &&
+    error.generations.some((generation) =>
+      generation.errors.some((failure) =>
+        failure.retryable ||
+        failure.kind === "timeout" ||
+        failure.details.httpStatus === 429,
+      ),
+    );
   while (queue.length > 0) {
     const byId = new Map(queue.map((item) => [item.id, item]));
     const run = await runBoundedPool({
@@ -655,7 +664,7 @@ async function runEvaluationStage(input: {
     const next: Array<ResearchWorkItem<EvaluationQuery>> = [];
     for (const audit of run.results) {
       const item = byId.get(audit.itemId);
-      if (!item || audit.value || item.query.batch.length === 1 || input.remainingMs() < 1_000) {
+      if (!item || audit.value || item.query.batch.length === 1 || input.remainingMs() < 1_000 || (!input.reviewer && retryableFailure(audit.error))) {
         terminal.push(audit);
         continue;
       }
