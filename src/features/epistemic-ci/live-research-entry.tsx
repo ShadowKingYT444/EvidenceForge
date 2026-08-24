@@ -90,7 +90,7 @@ export function LiveResearchEntry({ onUseDemo }: { onUseDemo: () => void }) {
 
   const busy = state === "creating" || state === "decomposing";
   const examples = [
-    { label: "Retrieval and hallucination", question: "Does retrieval-augmented generation reduce factual hallucination compared with the same model without retrieval?", application: "Choose an evidence-grounding architecture for a research assistant." },
+    { label: "Retrieval vs. hallucination · recorded demo", question: "Does retrieval-augmented generation reduce factual hallucination compared with the same model without retrieval?", application: "Choose an evidence-grounding architecture for a research assistant.", demoHref: "/demo/rag" },
     { label: "Independent model review", question: "Does an independent evaluator reduce reward hacking in sparse-data model evaluation?", application: "Choose an evaluator architecture for model training." },
     { label: "Cold-weather storage", question: "Does sodium-ion storage improve cold-weather reliability for remote sensor deployments?", application: "Choose a storage chemistry for a remote monitoring system." },
   ];
@@ -126,7 +126,7 @@ export function LiveResearchEntry({ onUseDemo }: { onUseDemo: () => void }) {
             <div className={styles.formMeta}><span>New investigation</span><span>Research brief</span></div>
             <p className={styles.liveEntryNotice}>Runs are process-local and may expire or disappear when the server restarts. Export important results.</p>
             <div className={styles.examplePrompts} aria-label="Prompt examples">
-              {examples.map((example) => <button key={example.label} type="button" disabled={busy} onClick={() => { setQuestion(example.question); setApplication(example.application); }}>{example.label}</button>)}
+              {examples.map((example) => <button key={example.label} type="button" disabled={busy} onClick={() => { if ("demoHref" in example && example.demoHref) { router.push(example.demoHref); return; } setQuestion(example.question); setApplication(example.application); }}>{example.label}</button>)}
             </div>
             <label className={styles.questionField}>
               Research question
