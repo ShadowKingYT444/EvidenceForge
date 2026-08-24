@@ -33,14 +33,14 @@ import styles from "./recorded-rag-demo.module.css";
 
 const stages = ["Scope", "Sources", "Evidence", "Review", "Decision"] as const;
 const replaySteps = [
-  "Loading the recorded claim contract...",
+  "Loading the prepared claim contract...",
   "Replaying 10 scholarly search queries...",
   "Screening 200 candidate records for relevance and rights...",
   "Importing 10 retained papers from the frozen source packet...",
   "Hashing 10 exact abstract passages and checking provenance...",
-  "Applying the recorded primary model assessments...",
+  "Applying the prepared primary model assessments...",
   "Replaying independent review and human dispositions...",
-  "Evidence packet ready. All recorded artifacts are now inspectable.",
+  "Evidence packet ready. All prepared artifacts are now inspectable.",
 ] as const;
 
 const verificationLabels = [
@@ -108,7 +108,7 @@ export function RecordedRagDemo() {
       <header className={styles.topbar}>
         <Link href="/" className={styles.brand}><ArrowLeft size={15} /> EvidenceForge</Link>
         <div className={styles.topActions}>
-          <span className={styles.recordedBadge}><Activity size={13} /> Recorded demo</span>
+          <span className={styles.recordedBadge}><Activity size={13} /> Guided walkthrough</span>
           <button type="button" onClick={() => setNarration((value) => !value)} aria-pressed={narration}>
             {narration ? <Volume2 size={14} /> : <VolumeX size={14} />}
             {narration ? "Narration on" : "Narrate replay"}
@@ -118,8 +118,8 @@ export function RecordedRagDemo() {
       </header>
 
       <div className={styles.shell}>
-        <nav className={styles.stageRail} aria-label="Recorded investigation stages">
-          <span>Recorded investigation</span>
+        <nav className={styles.stageRail} aria-label="Guided investigation stages">
+          <span>Prepared investigation</span>
           <ol>
             {stages.map((stage, index) => {
               const locked = index > 1 && !complete;
@@ -134,7 +134,7 @@ export function RecordedRagDemo() {
           </ol>
           <div className={styles.disclosure}>
             <ShieldCheck size={14} />
-            <p><strong>Precompiled evidence</strong>This route makes no live provider calls. Sources and judgments are frozen for a reliable presentation.</p>
+            <p><strong>Prepared evidence packet</strong>Provider calls are not made during this walkthrough. Sources and judgments are frozen for consistency.</p>
           </div>
         </nav>
 
@@ -144,24 +144,24 @@ export function RecordedRagDemo() {
               <span>{String(selectedStage + 1).padStart(2, "0")} / 05 · {stages[selectedStage]}</span>
               <h1>{ragDemoQuestion}</h1>
             </div>
-            <span className={styles.status}>{complete ? "Packet ready" : "Recorded replay"}</span>
+            <span className={styles.status}>{complete ? "Packet ready" : "Replay in progress"}</span>
           </header>
 
           {selectedStage === 1 ? (
-            <section className={styles.replayPanel} aria-label="Recorded workflow replay">
+            <section className={styles.replayPanel} aria-label="Guided workflow replay">
               <div className={styles.replayHeading}>
                 <span className={styles.replayIcon}>{replaying ? <Activity size={17} /> : <FileCheck2 size={17} />}</span>
                 <div>
-                  <span>Recorded execution</span>
+                  <span>Workflow replay</span>
                   <strong role="status" aria-live="polite">{replaySteps[replayIndex]}</strong>
                 </div>
                 {!complete ? <button type="button" onClick={skipReplay}><Pause size={14} /> Skip replay</button> : <button type="button" onClick={replay}><Play size={14} /> Replay</button>}
               </div>
               <div className={styles.replayTrack} aria-hidden="true"><i style={{ width: String(((replayIndex + 1) / replaySteps.length) * 100) + "%" }} /></div>
-              <ol className={styles.pipeline} aria-label="Recorded evidence pipeline">
+              <ol className={styles.pipeline} aria-label="Prepared evidence pipeline">
                 {verificationLabels.map((label, index) => {
                   const state = complete || replayIndex > index ? "complete" : replayIndex === index ? "active" : "pending";
-                  return <li key={label} data-state={state}><i>{state === "complete" ? <Check size={11} /> : index + 1}</i><span><strong>{label}</strong><small>{state === "complete" ? "Recorded" : state === "active" ? "Replaying" : "Pending"}</small></span></li>;
+                  return <li key={label} data-state={state}><i>{state === "complete" ? <Check size={11} /> : index + 1}</i><span><strong>{label}</strong><small>{state === "complete" ? "Complete" : state === "active" ? "Replaying" : "Pending"}</small></span></li>;
                 })}
               </ol>
             </section>
@@ -173,7 +173,7 @@ export function RecordedRagDemo() {
               <ol className={styles.claimList}>
                 {ragDemoClaims.map((claim, index) => <li key={claim.id}><span>C{index + 1}</span><div><strong>{claim.statement}</strong><p>{claim.operationalDefinition}</p></div><small>{claimCounts.get(claim.id)} passages</small></li>)}
               </ol>
-              <div className={styles.recordedCheckpoint}><Check size={14} /><span><strong>Recorded scope approval</strong>Source search was bounded to empirical factuality evidence, retrieval failure modes, and evaluation methodology.</span></div>
+              <div className={styles.recordedCheckpoint}><Check size={14} /><span><strong>Scope approved</strong>Source search was bounded to empirical factuality evidence, retrieval failure modes, and evaluation methodology.</span></div>
             </section>
           ) : null}
 
@@ -208,7 +208,7 @@ export function RecordedRagDemo() {
                 {ragDemoSources.map((source, index) => <button type="button" key={source.id} onClick={() => setSelectedSourceId(source.id)} style={{ animationDelay: String(index * 45) + "ms" }}>
                   <span data-tone={relationshipTone(source.relationship)}>{source.relationship}</span>
                   <span><strong>“{source.excerpt}”</strong><small>{source.authors} · {source.venue} {source.year}</small></span>
-                  <span className={styles.verificationStack}><small><Check size={10} /> Text + provenance</small><small><Check size={10} /> Primary assessment</small><small><Check size={10} /> Independent review</small><small><Check size={10} /> Human recorded</small></span>
+                  <span className={styles.verificationStack}><small><Check size={10} /> Text + provenance</small><small><Check size={10} /> Primary assessment</small><small><Check size={10} /> Independent review</small><small><Check size={10} /> Human review</small></span>
                 </button>)}
               </div>
             </section>
@@ -238,19 +238,19 @@ export function RecordedRagDemo() {
                 <div><dt>Unresolved objections</dt><dd>1</dd></div>
                 <div className={styles.fingerprint}><dt>Packet fingerprint</dt><dd>{ragDemoFingerprint}</dd></div>
               </dl>
-              <div className={styles.recordedCheckpoint}><ShieldCheck size={14} /><span><strong>Recorded human decision</strong>Use RAG for the pilot only with relevance, faithfulness, provenance, and abstention controls.</span></div>
+              <div className={styles.recordedCheckpoint}><ShieldCheck size={14} /><span><strong>Human decision</strong>Use RAG for the pilot only with relevance, faithfulness, provenance, and abstention controls.</span></div>
             </section>
           ) : null}
         </section>
 
-        <aside className={styles.inspector} aria-label="Recorded source inspector">
+        <aside className={styles.inspector} aria-label="Evidence source inspector">
           <header><BookOpen size={15} /><span>Source inspector</span></header>
           <div className={styles.inspectorBody}>
             <span data-tone={relationshipTone(selectedSource.relationship)}>{selectedSource.relationship}</span>
             <h2>{selectedSource.title}</h2>
             <p>{selectedSource.authors} · {selectedSource.venue} · {selectedSource.year}</p>
             <blockquote>“{selectedSource.excerpt}”</blockquote>
-            <section><span>Recorded finding</span><p>{selectedSource.finding}</p></section>
+            <section><span>Finding</span><p>{selectedSource.finding}</p></section>
             <section><span>Limitation</span><p>{selectedSource.limitation}</p></section>
             <dl>
               <div><dt>Claim</dt><dd>C{ragDemoClaims.findIndex(({ id }) => id === selectedSource.claimId) + 1}</dd></div>

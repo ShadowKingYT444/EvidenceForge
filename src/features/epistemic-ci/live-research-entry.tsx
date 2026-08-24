@@ -90,7 +90,7 @@ export function LiveResearchEntry({ onUseDemo }: { onUseDemo: () => void }) {
 
   const busy = state === "creating" || state === "decomposing";
   const examples = [
-    { label: "Retrieval vs. hallucination · recorded demo", question: "Does retrieval-augmented generation reduce factual hallucination compared with the same model without retrieval?", application: "Choose an evidence-grounding architecture for a research assistant.", demoHref: "/demo/rag" },
+    { label: "Retrieval vs. hallucination · guided walkthrough", question: "Does retrieval-augmented generation reduce factual hallucination compared with the same model without retrieval?", application: "Choose an evidence-grounding architecture for a research assistant.", demoHref: "/demo/rag" },
     { label: "Independent model review", question: "Does an independent evaluator reduce reward hacking in sparse-data model evaluation?", application: "Choose an evaluator architecture for model training." },
     { label: "Cold-weather storage", question: "Does sodium-ion storage improve cold-weather reliability for remote sensor deployments?", application: "Choose a storage chemistry for a remote monitoring system." },
   ];

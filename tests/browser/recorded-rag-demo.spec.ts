@@ -1,15 +1,15 @@
 import { expect, test } from "@playwright/test";
 
-test("replays the prerecorded RAG investigation through the normal evidence flow", async ({ page }) => {
+test("replays the prepared RAG investigation through the normal evidence flow", async ({ page }) => {
   const consoleErrors: string[] = [];
   const runRequests: string[] = [];
   page.on("console", (message) => { if (message.type() === "error") consoleErrors.push(message.text()); });
   page.on("request", (request) => { if (request.url().includes("/api/runs")) runRequests.push(request.url()); });
 
   await page.goto("/");
-  await page.getByRole("button", { name: /Retrieval vs. hallucination · recorded demo/i }).click();
+  await page.getByRole("button", { name: /Retrieval vs. hallucination · guided walkthrough/i }).click();
   await expect(page).toHaveURL(/\/demo\/rag$/);
-  await expect(page.getByText("Recorded demo", { exact: true })).toBeVisible();
+  await expect(page.getByText("Guided walkthrough", { exact: true })).toBeVisible();
   await expect(page.getByRole("heading", { level: 1, name: /Does retrieval-augmented generation reduce factual hallucination/i })).toBeVisible();
   await expect(page.getByRole("status")).toContainText(/Loading|Replaying|Screening|Importing|Hashing|Applying|review|ready/i);
   await expect(page.getByRole("button", { name: "Narrate replay" })).toBeVisible();

@@ -1,12 +1,12 @@
-# EvidenceForge recorded RAG demo script
+# EvidenceForge guided RAG walkthrough script
 
 ## Setup
 
 Open the EvidenceForge home page. Say:
 
-> Live research is unpredictable in a stage demo because scholarly APIs and model quotas can fail. This example is a transparent recorded run: the source packet, exact passages, model judgments, and human decision were compiled in advance. The interface and audit model are the same, but no provider call happens during the presentation.
+> Live research is unpredictable in a stage demo because scholarly APIs and model quotas can fail. This guided walkthrough uses a prepared source packet, exact passages, model judgments, and human decision. The interface and audit model are the same, but no provider call happens during the walkthrough.
 
-Click **Retrieval vs. hallucination · recorded demo**.
+Click **Retrieval vs. hallucination · guided walkthrough**.
 
 ## During the replay
 
@@ -30,7 +30,7 @@ Open **Scope**.
 
 Open **Sources** or return to it and click **Skip replay**.
 
-> We screened a recorded set of 200 candidate records and retained ten primary scholarly sources. Four directly support a factuality benefit, three define evaluation and provenance requirements, and three expose failure modes.
+> We screened a prepared set of 200 candidate records and retained ten primary scholarly sources. Four directly support a factuality benefit, three define evaluation and provenance requirements, and three expose failure modes.
 
 Select **Retrieval Augmentation Reduces Hallucination in Conversation**.
 
@@ -48,7 +48,7 @@ Select **Toward Robust RALMs**.
 
 Open **Evidence**.
 
-> Every row exposes the exact passage immediately. The four checks on the right are deliberately separate: deterministic text and provenance validation, a primary model assessment, an independent model review, and a recorded human status.
+> Every row exposes the exact passage immediately. The four checks on the right are deliberately separate: deterministic text and provenance validation, a primary model assessment, an independent model review, and a human review status.
 
 > The moat is not “we call two models.” The moat is the evidence graph and its audit contract. Claims point to exact passages; passages point to immutable source records; judgments retain provider and execution identity; objections and human dispositions remain in the final record.
 
@@ -84,4 +84,4 @@ Use this concise explanation if judges ask how it works:
 
 If asked whether the run is live:
 
-> This specific route is prerecorded and labeled that way because the demo must not depend on third-party quotas. EvidenceForge also supports live runs; the recorded route uses the same conceptual workflow and evidence artifacts without claiming that prerecorded events are live.
+> This walkthrough uses a prepared packet because the presentation must not depend on third-party quotas. EvidenceForge also supports live runs; provider calls are simply not made during this guided route.
