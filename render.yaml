@@ -35,6 +35,8 @@ services:
         value: meta/llama-3.1-8b-instruct
       - key: OPENALEX_API_KEY
         sync: false
+      - key: FIRECRAWL_API_KEY
+        sync: false
       - key: CROSSREF_MAILTO
         sync: false
       - key: OPENALEX_MAILTO
