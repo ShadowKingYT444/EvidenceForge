@@ -4,6 +4,7 @@ import { z } from "zod";
 import { EnvironmentValidationError } from "../../src/server/environment";
 import { InvalidRequestError, ProviderRateLimitError, UpstreamProviderError, WorkflowStateConflictError, liveRouteError } from "../../src/server/workflow/live-http";
 import { RevisionConflictError, RunNotFoundError } from "../../src/server/workflow/store";
+import { ResearchSessionRequiredError } from "../../src/server/session/research-session";
 
 describe("live route error classification", () => {
   afterEach(() => vi.restoreAllMocks());
@@ -15,6 +16,7 @@ describe("live route error classification", () => {
     [new RevisionConflictError("private-run"), 409, "revision_conflict"],
     [new WorkflowStateConflictError("wrong phase"), 409, "workflow_state_conflict"],
     [new EnvironmentValidationError(["OPENALEX_API_KEY"]), 503, "runtime_configuration_invalid"],
+    [new ResearchSessionRequiredError(), 401, "research_session_required"],
     [new ProviderRateLimitError(), 429, "provider_rate_limited"],
     [new UpstreamProviderError(), 502, "upstream_provider_failure"],
     [new Error("secret response body"), 500, "internal_error"],

@@ -4,7 +4,6 @@ import { ArrowRight, Check, Clock3, LoaderCircle, LockKeyhole, Play, ShieldCheck
 import { useRouter } from "next/navigation";
 import { type FormEvent, useState } from "react";
 
-import { ProviderOnboarding } from "../providers/onboarding";
 import styles from "./workspace.module.css";
 
 type CreatedRun = {
@@ -14,13 +13,7 @@ type CreatedRun = {
   error?: { message?: string };
 };
 
-type HealthState = {
-  evidenceMode?: "fixture" | "live" | "invalid";
-  liveInvestigationsReady?: boolean;
-  reasonCodes?: string[];
-};
-
-export function LiveResearchEntry({ onUseDemo }: { onUseDemo: () => void }) {
+export function LiveResearchEntry({ ownerDemo = false, onUseDemo }: { ownerDemo?: boolean; onUseDemo?: () => void }) {
   const router = useRouter();
   const [question, setQuestion] = useState("");
   const [application, setApplication] = useState("");
@@ -34,17 +27,6 @@ export function LiveResearchEntry({ onUseDemo }: { onUseDemo: () => void }) {
     setState("creating");
     setError("");
     try {
-      const healthResponse = await fetch("/api/health", { cache: "no-store" });
-      const health = await healthResponse.json().catch(() => ({})) as HealthState;
-      if (!healthResponse.ok || health.evidenceMode !== "live" || !health.liveInvestigationsReady) {
-        if (health.evidenceMode === "fixture") {
-          throw new Error("Fixture/demo mode is active. Live investigations are unavailable; use Try the demo.");
-        }
-        if (health.reasonCodes?.includes("openalex_key_missing")) {
-          throw new Error("Live scholarly search is not configured.");
-        }
-        throw new Error("Live model providers are not configured.");
-      }
       const createdResponse = await fetch("/api/runs", {
         method: "POST",
         headers: { "content-type": "application/json" },
@@ -94,6 +76,7 @@ export function LiveResearchEntry({ onUseDemo }: { onUseDemo: () => void }) {
     { label: "Independent model review", question: "Does an independent evaluator reduce reward hacking in sparse-data model evaluation?", application: "Choose an evaluator architecture for model training." },
     { label: "Cold-weather storage", question: "Does sodium-ion storage improve cold-weather reliability for remote sensor deployments?", application: "Choose a storage chemistry for a remote monitoring system." },
   ];
+  const visibleExamples = examples.filter((example) => ownerDemo || !("demoHref" in example));
 
   return (
     <main className={styles.workspace}>
@@ -103,9 +86,9 @@ export function LiveResearchEntry({ onUseDemo }: { onUseDemo: () => void }) {
             <span className={styles.brandMark} aria-hidden="true"><i /><i /><i /></span>
             <div><strong>EvidenceForge</strong><span>Epistemic CI</span></div>
           </div>
-          <button className={styles.demoLink} type="button" disabled={busy} onClick={onUseDemo}>
-            <Play aria-hidden="true" size={13} /> Try the demo
-          </button>
+          {ownerDemo && onUseDemo ? <button className={styles.demoLink} type="button" disabled={busy} onClick={onUseDemo}>
+            <Play aria-hidden="true" size={13} /> Owner demo
+          </button> : null}
         </header>
 
         <div className={styles.liveEntryGrid}>
@@ -126,7 +109,7 @@ export function LiveResearchEntry({ onUseDemo }: { onUseDemo: () => void }) {
             <div className={styles.formMeta}><span>New investigation</span><span>Research brief</span></div>
             <p className={styles.liveEntryNotice}>Runs are process-local and may expire or disappear when the server restarts. Export important results.</p>
             <div className={styles.examplePrompts} aria-label="Prompt examples">
-              {examples.map((example) => <button key={example.label} type="button" disabled={busy} onClick={() => { if ("demoHref" in example && example.demoHref) { router.push(example.demoHref); return; } setQuestion(example.question); setApplication(example.application); }}>{example.label}</button>)}
+              {visibleExamples.map((example) => <button key={example.label} type="button" disabled={busy} onClick={() => { if ("demoHref" in example && example.demoHref) { router.push(example.demoHref); return; } setQuestion(example.question); setApplication(example.application); }}>{example.label}</button>)}
             </div>
             <label className={styles.questionField}>
               Research question
@@ -154,7 +137,6 @@ export function LiveResearchEntry({ onUseDemo }: { onUseDemo: () => void }) {
           </form>
         </div>
       </section>
-      <ProviderOnboarding />
     </main>
   );
 }

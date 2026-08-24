@@ -48,7 +48,7 @@ function errorMessage(error: unknown): { title: string; message: string; stale: 
   return { title: "Unexpected workspace error", message: "The deterministic demo could not continue.", stale: false };
 }
 
-export function EpistemicCiWorkspace() {
+export function EpistemicCiWorkspace({ ownerDemo = false }: { ownerDemo?: boolean }) {
   const [demo, setDemo] = useState<DemoResponse | null>(null);
   const [build, setBuild] = useState<EpistemicBuild | null>(null);
   const [appliedChangeIds, setAppliedChangeIds] = useState<ChangeId[]>([]);
@@ -160,7 +160,7 @@ export function EpistemicCiWorkspace() {
   }
 
   if (!demo || !build) {
-    if (!busyLabel && !error) return <LiveResearchEntry onUseDemo={() => void resetDemo()} />;
+    if (!busyLabel && !error) return <LiveResearchEntry ownerDemo={ownerDemo} onUseDemo={ownerDemo ? () => void resetDemo() : undefined} />;
     return (
       <main className={styles.workspace}>
         <div className={styles.centerState}>

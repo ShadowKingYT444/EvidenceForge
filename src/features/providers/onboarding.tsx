@@ -1,168 +1,127 @@
 "use client";
 
-import Link from "next/link";
-import { useEffect, useRef, useState, type FormEvent, type MouseEvent } from "react";
+import { Check, KeyRound, LoaderCircle, LockKeyhole, Search, ShieldCheck } from "lucide-react";
+import { useState, type FormEvent } from "react";
 
-import { providerIds, providerMeta, providerProtocol, type ProviderId } from "./catalog";
+import { providerIds, providerMeta, type ProviderId } from "./catalog";
 
-type Result =
-  | { ok: true; provider: ProviderId; model: string; latencyMs: number; evidenceMode: "live" }
-  | { ok: false; error?: { code?: string; message?: string } };
+type Props = { ownerDemo: boolean; error?: string; onChanged: () => void };
+type DiagnosticResponse = {
+  ok?: boolean;
+  error?: { message?: string };
+  diagnostics?: Record<string, { ok?: boolean; code?: string | null; latencyMs?: number }>;
+};
 
-export function ProviderOnboarding() {
-  const dialogRef = useRef<HTMLDialogElement>(null);
-  const triggerRef = useRef<HTMLButtonElement>(null);
-  const keyRef = useRef<HTMLInputElement>(null);
-  const [selected, setSelected] = useState<ProviderId | null>(null);
-  const [model, setModel] = useState("");
-  const [apiKey, setApiKey] = useState("");
-  const [reveal, setReveal] = useState(false);
-  const [status, setStatus] = useState<"idle" | "loading" | "success" | "error">("idle");
+export function ProviderOnboarding({ ownerDemo, error: gateError, onChanged }: Props) {
+  const [primaryProvider, setPrimaryProvider] = useState<ProviderId>("openai");
+  const [primaryModel, setPrimaryModel] = useState(providerMeta.openai.model);
+  const [primaryKey, setPrimaryKey] = useState("");
+  const [separateReviewer, setSeparateReviewer] = useState(false);
+  const [reviewerProvider, setReviewerProvider] = useState<ProviderId>("anthropic");
+  const [reviewerModel, setReviewerModel] = useState(providerMeta.anthropic.model);
+  const [reviewerKey, setReviewerKey] = useState("");
+  const [openAlexKey, setOpenAlexKey] = useState("");
+  const [firecrawlKey, setFirecrawlKey] = useState("");
+  const [ownerSecret, setOwnerSecret] = useState("");
+  const [status, setStatus] = useState<"idle" | "checking" | "error">("idle");
   const [message, setMessage] = useState("");
+  const [diagnostics, setDiagnostics] = useState<DiagnosticResponse["diagnostics"]>();
 
-  useEffect(() => {
-    const dialog = dialogRef.current;
-    if (!dialog || !selected || dialog.open) return;
-    dialog.showModal();
-    window.requestAnimationFrame(() => keyRef.current?.focus());
-  }, [selected]);
-
-  function closeDialog() {
-    dialogRef.current?.close();
+  function choosePrimary(provider: ProviderId) {
+    setPrimaryProvider(provider);
+    setPrimaryModel(providerMeta[provider].model);
+  }
+  function chooseReviewer(provider: ProviderId) {
+    setReviewerProvider(provider);
+    setReviewerModel(providerMeta[provider].model);
   }
 
-  function openProvider(provider: ProviderId, event: MouseEvent<HTMLButtonElement>) {
-    triggerRef.current = event.currentTarget;
-    setSelected(provider);
-    setModel(providerMeta[provider].model);
-    setApiKey("");
-    setReveal(false);
-    setStatus("idle");
-    setMessage("");
-  }
-
-  function handleClose() {
-    setSelected(null);
-    setApiKey("");
-    setModel("");
-    setReveal(false);
-    setStatus("idle");
-    setMessage("");
-    window.requestAnimationFrame(() => triggerRef.current?.focus());
-  }
-
-  async function verify(event: FormEvent<HTMLFormElement>) {
+  async function connect(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!selected || status === "loading") return;
-    setStatus("loading");
+    setStatus("checking");
     setMessage("");
+    setDiagnostics(undefined);
     try {
-      const response = await fetch("/api/providers/test", {
+      const response = await fetch("/api/session/research", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ provider: selected, model, apiKey }),
+        body: JSON.stringify({
+          primary: { provider: primaryProvider, model: primaryModel.trim(), apiKey: primaryKey },
+          ...(separateReviewer ? { reviewer: { provider: reviewerProvider, model: reviewerModel.trim(), apiKey: reviewerKey } } : {}),
+          openAlexApiKey: openAlexKey,
+          firecrawlApiKey: firecrawlKey,
+        }),
       });
-      const result = (await response.json()) as Result;
-      if (result.ok) {
-        setApiKey("");
-        setStatus("success");
-        setMessage(`Connection verified · ${result.latencyMs} ms`);
-      } else {
-        setStatus("error");
-        setMessage(result.error?.message ?? "The provider connection could not be completed.");
-      }
-    } catch {
+      const result = await response.json().catch(() => ({})) as DiagnosticResponse;
+      setDiagnostics(result.diagnostics);
+      if (!response.ok || !result.ok) throw new Error(result.error?.message ?? "The credential checks did not pass.");
+      setPrimaryKey("");
+      setReviewerKey("");
+      setOpenAlexKey("");
+      setFirecrawlKey("");
+      onChanged();
+    } catch (cause) {
       setStatus("error");
-      setMessage("The provider connection could not be completed.");
+      setMessage(cause instanceof Error ? cause.message : "The credential checks did not pass.");
     }
   }
 
+  async function unlockOwner(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const response = await fetch("/api/session/owner", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ ownerSecret }) });
+    const result = await response.json().catch(() => ({})) as { ok?: boolean; error?: { message?: string } };
+    setOwnerSecret("");
+    if (!response.ok || !result.ok) {
+      setMessage(result.error?.message ?? "Owner access was not accepted.");
+      setStatus("error");
+      return;
+    }
+    onChanged();
+  }
+
   return (
-    <section className="provider-shell">
+    <main className="provider-shell credential-gate">
       <header className="provider-header">
-        <Link className="provider-brand" href="/" aria-label="EvidenceForge home">
-          <span className="brand-glyph" aria-hidden="true"><i /><i /><i /></span>
-          <span>EvidenceForge</span>
-        </Link>
-        <span className="provider-header-note">Session setup</span>
+        <span className="provider-brand"><span className="brand-glyph" aria-hidden="true"><i /><i /><i /></span>EvidenceForge</span>
+        <span className="provider-header-note">Private session setup</span>
       </header>
-
-      <section className="provider-hero" aria-labelledby="connect-title">
-        <div className="provider-hero-copy">
-          <p className="provider-eyebrow">Credential diagnostic</p>
-          <h2 id="connect-title">Test a model-provider key</h2>
-          <p className="provider-lede">This bounded check does not change the server configuration or enable live investigations.</p>
+      <section className="credential-hero">
+        <div>
+          <p className="provider-eyebrow">Bring your own research stack</p>
+          <h1>Connect evidence to a model you trust.</h1>
+          <p>Keys stay in server memory for this session. They are never written to the browser, logs, or repository.</p>
         </div>
-        <div className="provider-security-note" aria-label="Credential handling">
-          <span className="security-dot" aria-hidden="true" />
-          <span>Keys are used once and never saved.</span>
-        </div>
+        <div className="credential-security"><ShieldCheck size={17} /><strong>Server-only</strong><span>Process-local and automatically expires.</span></div>
       </section>
-
-      <section className="provider-grid" aria-label="Model providers">
-        {providerIds.map((provider) => {
-          const meta = providerMeta[provider];
-          return (
-            <button
-              className="provider-card"
-              data-provider={provider}
-              key={provider}
-              onClick={(event) => openProvider(provider, event)}
-              type="button"
-            >
-              <span className={`provider-mark provider-mark-${provider}`} aria-hidden="true">{meta.mark}</span>
-              <span className="provider-card-copy">
-                <strong>{meta.short}</strong>
-                <small>{providerProtocol[provider]}</small>
-              </span>
-              <span className="provider-arrow" aria-hidden="true">↗</span>
-            </button>
-          );
-        })}
-      </section>
-
-      <footer className="provider-footer">
-        <Link className="fixture-link" href="/intake?demo=golden">
-          <span className="fixture-icon" aria-hidden="true">✦</span>
-          Use recorded fixture
-        </Link>
-        <span className="fixture-caption">No credentials needed</span>
-      </footer>
-      <dialog
-        className="provider-dialog"
-        ref={dialogRef}
-        aria-labelledby="provider-dialog-title"
-        onClose={handleClose}
-      >
-        {selected ? (
-          <form onSubmit={verify}>
-            <div className="dialog-topline">
-              <div className="dialog-provider-heading">
-                <span className={`provider-mark provider-mark-${selected}`} aria-hidden="true">{providerMeta[selected].mark}</span>
-                <div><p className="dialog-kicker">Connect</p><h2 id="provider-dialog-title">{providerMeta[selected].short}</h2></div>
-              </div>
-              <button className="dialog-close" type="button" onClick={closeDialog} aria-label="Close provider dialog">×</button>
-            </div>
-            <div className="dialog-fields">
-              <label htmlFor="provider-model">Model ID</label>
-              <input id="provider-model" value={model} onChange={(event) => setModel(event.target.value)} autoComplete="off" spellCheck={false} required />
-              <label htmlFor="provider-key">API key</label>
-              <div className="key-field">
-                <input ref={keyRef} id="provider-key" type={reveal ? "text" : "password"} value={apiKey} onChange={(event) => setApiKey(event.target.value)} autoComplete="off" spellCheck={false} required aria-describedby="provider-key-note" />
-                <button type="button" className="reveal-key" onClick={() => setReveal((value) => !value)} aria-pressed={reveal}>{reveal ? "Hide" : "Show"}</button>
-              </div>
-              <p id="provider-key-note" className="dialog-note">Used for one connection check, then cleared.</p>
-            </div>
-            <div className="dialog-actions">
-              <button className="dialog-secondary" type="button" onClick={closeDialog}>Cancel</button>
-              <button className="dialog-primary" type="submit" disabled={status === "loading"}>{status === "loading" ? "Checking…" : "Verify key"}</button>
-            </div>
-            <div className={`connection-status status-${status}`} role={status === "error" ? "alert" : "status"} aria-live="polite">
-              {status === "success" ? <><span aria-hidden="true">✓</span> {message}</> : status === "error" ? <><span aria-hidden="true">!</span> {message}</> : status === "loading" ? "Sending one bounded check…" : ""}
-            </div>
-          </form>
-        ) : null}
-      </dialog>
-    </section>
+      <form className="credential-form" onSubmit={connect}>
+        <section className="credential-section">
+          <div className="credential-section-title"><KeyRound size={17} /><div><span>01</span><h2>Research model</h2><p>Choose any supported provider protocol and enter the exact model ID.</p></div></div>
+          <div className="credential-fields">
+            <label>Provider<select aria-label="Research provider" value={primaryProvider} onChange={(event) => choosePrimary(event.target.value as ProviderId)}>{providerIds.map((provider) => <option key={provider} value={provider}>{providerMeta[provider].short}</option>)}</select></label>
+            <label>Model ID<input aria-label="Research model ID" value={primaryModel} onChange={(event) => setPrimaryModel(event.target.value)} required spellCheck={false} /></label>
+            <label className="credential-key-field">API key<input aria-label="Research provider API key" type="password" value={primaryKey} onChange={(event) => setPrimaryKey(event.target.value)} required autoComplete="off" /></label>
+          </div>
+          <label className="credential-toggle"><input type="checkbox" checked={separateReviewer} onChange={(event) => setSeparateReviewer(event.target.checked)} /> Use a separate model for independent review</label>
+          {separateReviewer ? <div className="credential-fields credential-reviewer">
+            <label>Reviewer provider<select aria-label="Reviewer provider" value={reviewerProvider} onChange={(event) => chooseReviewer(event.target.value as ProviderId)}>{providerIds.map((provider) => <option key={provider} value={provider}>{providerMeta[provider].short}</option>)}</select></label>
+            <label>Reviewer model ID<input aria-label="Reviewer model ID" value={reviewerModel} onChange={(event) => setReviewerModel(event.target.value)} required spellCheck={false} /></label>
+            <label className="credential-key-field">Reviewer API key<input aria-label="Reviewer provider API key" type="password" value={reviewerKey} onChange={(event) => setReviewerKey(event.target.value)} required autoComplete="off" /></label>
+          </div> : null}
+        </section>
+        <section className="credential-section">
+          <div className="credential-section-title"><Search size={17} /><div><span>02</span><h2>Evidence retrieval</h2><p>OpenAlex finds scholarly records; Firecrawl discovers and extracts licensed web evidence.</p></div></div>
+          <div className="credential-fields credential-retrieval">
+            <label>OpenAlex API key<input aria-label="OpenAlex API key" type="password" value={openAlexKey} onChange={(event) => setOpenAlexKey(event.target.value)} required autoComplete="off" /></label>
+            <label>Firecrawl API key<input aria-label="Firecrawl API key" type="password" value={firecrawlKey} onChange={(event) => setFirecrawlKey(event.target.value)} required autoComplete="off" /></label>
+          </div>
+        </section>
+        {gateError || message ? <p className="credential-error" role="alert">{message || gateError}</p> : null}
+        {diagnostics ? <div className="credential-diagnostics" aria-label="Credential diagnostics">{Object.entries(diagnostics).map(([name, result]) => <span key={name} data-ok={result.ok}><Check size={12} />{name}{result.latencyMs !== undefined ? ` ${result.latencyMs} ms` : result.code ? ` ${result.code}` : ""}</span>)}</div> : null}
+        <button className="credential-submit" type="submit" disabled={status === "checking"}>{status === "checking" ? <><LoaderCircle size={16} /> Checking four connections...</> : <>Verify and enter EvidenceForge</>}</button>
+      </form>
+      <aside className="owner-access">
+        {ownerDemo ? <p><LockKeyhole size={14} /> Administrative access unlocked.</p> : <details><summary>Administrative access</summary><form onSubmit={unlockOwner}><label>Owner passphrase<input aria-label="Owner passphrase" type="password" value={ownerSecret} onChange={(event) => setOwnerSecret(event.target.value)} autoComplete="off" required /></label><button type="submit">Unlock</button></form></details>}
+      </aside>
+    </main>
   );
 }

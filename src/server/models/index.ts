@@ -71,7 +71,7 @@ export type AdapterRuntime = Readonly<{
 
 export type StructuredGenerationAdapter = Readonly<{
   identity: Readonly<{
-    provider: "groq" | "nvidia_nim" | "featherless" | "fixture";
+    provider: ProviderKind | "fixture";
     modelId: string;
     developerFamily: string;
     baseFamily: string;
@@ -106,7 +106,7 @@ export type FixtureConfiguration = Readonly<{
   fixtures: Readonly<Record<string, unknown>>;
 }>;
 
-type ProviderKind = "groq" | "nvidia_nim" | "featherless";
+export type ProviderKind = "openai" | "anthropic" | "gemini" | "groq" | "grok" | "deepseek" | "nvidia_nim" | "featherless";
 
 type AttemptFailure = Readonly<{
   ok: false;
@@ -613,6 +613,42 @@ function requestBody(
   request: StructuredGenerationRequest,
   messages: readonly ProviderMessage[],
 ): JsonObject {
+  const jsonInstruction = [
+    "Return only one JSON object matching this schema.",
+    JSON.stringify(request.outputJsonSchema),
+    "Do not add markdown fences or explanatory text.",
+  ].join("\n");
+  const instructedMessages = messages.map((message, index) =>
+    index === messages.length - 1
+      ? { ...message, content: `${message.content}\n\n${jsonInstruction}` }
+      : message,
+  );
+
+  if (provider === "anthropic") {
+    return {
+      model: configuration.modelId,
+      max_tokens: request.settings.maxOutputTokens,
+      temperature: request.settings.temperature,
+      system: messages.filter(({ role }) => role === "system").map(({ content }) => content).join("\n\n") || undefined,
+      messages: instructedMessages.filter(({ role }) => role !== "system").map(({ role, content }) => ({ role, content })),
+      stream: false,
+    };
+  }
+
+  if (provider === "gemini") {
+    return {
+      systemInstruction: { parts: messages.filter(({ role }) => role === "system").map(({ content }) => ({ text: content })) },
+      contents: instructedMessages.filter(({ role }) => role !== "system").map(({ role, content }) => ({ role: role === "assistant" ? "model" : "user", parts: [{ text: content }] })),
+      generationConfig: {
+        temperature: request.settings.temperature,
+        maxOutputTokens: request.settings.maxOutputTokens,
+        ...(request.settings.topP === null ? {} : { topP: request.settings.topP }),
+        responseMimeType: "application/json",
+        responseJsonSchema: request.outputJsonSchema,
+      },
+    };
+  }
+
   const common: JsonObject = {
     model: configuration.modelId,
     messages,
@@ -627,7 +663,7 @@ function requestBody(
     common.seed = request.settings.seed;
   }
 
-  if (provider === "groq") {
+  if (provider === "groq" && groqStrictModels.has(configuration.modelId)) {
     common.max_completion_tokens = request.settings.maxOutputTokens;
     common.include_reasoning = false;
     common.response_format = {
@@ -642,18 +678,9 @@ function requestBody(
   }
 
   common.max_tokens = request.settings.maxOutputTokens;
-  if (provider === "featherless") {
+  if (["openai", "groq", "grok", "deepseek", "featherless"].includes(provider)) {
     common.response_format = { type: "json_object" };
-    const jsonInstruction = [
-      "Return only one JSON object matching this schema.",
-      JSON.stringify(request.outputJsonSchema),
-      "Do not add markdown fences or explanatory text.",
-    ].join("\n");
-    common.messages = messages.map((message, index) =>
-      index === messages.length - 1
-        ? { ...message, content: `${message.content}\n\n${jsonInstruction}` }
-        : message,
-    );
+    common.messages = instructedMessages;
     return common;
   }
   const supportsNvidiaReasoningControls =
@@ -671,17 +698,37 @@ function requestBody(
       common.reasoning_budget = request.settings.reasoningBudgetTokens;
     }
   }
-  const jsonInstruction = [
-    "Return only one JSON object matching this schema.",
-    JSON.stringify(request.outputJsonSchema),
-    "Do not add markdown fences or explanatory text.",
-  ].join("\n");
-  common.messages = messages.map((message, index) =>
-    index === messages.length - 1
-      ? { ...message, content: `${message.content}\n\n${jsonInstruction}` }
-      : message,
-  );
+  common.messages = instructedMessages;
   return common;
+}
+
+function normalizeProviderResponse(provider: ProviderKind, body: JsonObject, configuration: ProviderConfiguration): JsonObject {
+  if (provider === "anthropic") {
+    const blocks = Array.isArray(body.content) ? body.content : [];
+    const content = blocks.filter(isObject).map((block) => stringValue(block.text)).filter((value): value is string => value !== null).join("\n");
+    const rawUsage = isObject(body.usage) ? body.usage : {};
+    return {
+      ...body,
+      choices: [{ finish_reason: body.stop_reason, message: { content, refusal: body.stop_reason === "refusal" ? "refusal" : null } }],
+      usage: { prompt_tokens: rawUsage.input_tokens, completion_tokens: rawUsage.output_tokens, total_tokens: Number(rawUsage.input_tokens ?? 0) + Number(rawUsage.output_tokens ?? 0) },
+    };
+  }
+  if (provider === "gemini") {
+    const candidates = Array.isArray(body.candidates) ? body.candidates : [];
+    const candidate = isObject(candidates[0]) ? candidates[0] : {};
+    const contentEnvelope = isObject(candidate.content) ? candidate.content : {};
+    const parts = Array.isArray(contentEnvelope.parts) ? contentEnvelope.parts : [];
+    const content = parts.filter(isObject).map((part) => stringValue(part.text)).filter((value): value is string => value !== null).join("\n");
+    const rawUsage = isObject(body.usageMetadata) ? body.usageMetadata : {};
+    return {
+      ...body,
+      id: body.responseId,
+      model: configuration.modelId,
+      choices: [{ finish_reason: candidate.finishReason, message: { content, refusal: isObject(body.promptFeedback) && body.promptFeedback.blockReason ? "blocked" : null } }],
+      usage: { prompt_tokens: rawUsage.promptTokenCount, completion_tokens: rawUsage.candidatesTokenCount, total_tokens: rawUsage.totalTokenCount },
+    };
+  }
+  return body;
 }
 
 type ProviderEnvelopeErrorCode =
@@ -984,11 +1031,14 @@ function createProviderAdapter(
   const runtime = normalizeRuntime(runtimeInput);
   const endpoint =
     configuration.endpoint ??
-    (provider === "groq"
-      ? "https://api.groq.com/openai/v1/chat/completions"
-      : provider === "nvidia_nim"
-        ? "https://integrate.api.nvidia.com/v1/chat/completions"
-        : "https://api.featherless.ai/v1/chat/completions");
+    (provider === "openai" ? "https://api.openai.com/v1/chat/completions" :
+      provider === "anthropic" ? "https://api.anthropic.com/v1/messages" :
+        provider === "gemini" ? `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(configuration.modelId)}:generateContent` :
+          provider === "groq" ? "https://api.groq.com/openai/v1/chat/completions" :
+            provider === "grok" ? "https://api.x.ai/v1/chat/completions" :
+              provider === "deepseek" ? "https://api.deepseek.com/chat/completions" :
+                provider === "nvidia_nim" ? "https://integrate.api.nvidia.com/v1/chat/completions" :
+                  "https://api.featherless.ai/v1/chat/completions");
 
   return {
     identity: Object.freeze({
@@ -1030,23 +1080,7 @@ function createProviderAdapter(
         };
       }
 
-      if (provider === "groq") {
-        if (!groqStrictModels.has(configuration.modelId)) {
-          return {
-            ok: false,
-            attempts: [],
-            errors: [
-              createError(runtime, {
-                kind: "invalid_input",
-                nodeId: request.nodeId,
-                executionId: null,
-                retryable: false,
-                message:
-                  "configured Groq model is not in the verified strict-schema allowlist",
-              }),
-            ],
-          };
-        }
+      if (provider === "groq" && groqStrictModels.has(configuration.modelId)) {
         const issues = schemaIssues(request.outputJsonSchema);
         if (issues.length > 0) {
           return {
@@ -1098,11 +1132,11 @@ function createProviderAdapter(
           response = await waitForTransport(
             runtime.transport(endpoint, {
               method: "POST",
-              headers: {
-                authorization: `Bearer ${configuration.apiKey}`,
-                "content-type": "application/json",
-                accept: "application/json",
-              },
+              headers: provider === "anthropic"
+                ? { "x-api-key": configuration.apiKey, "anthropic-version": "2023-06-01", "content-type": "application/json", accept: "application/json" }
+                : provider === "gemini"
+                  ? { "x-goog-api-key": configuration.apiKey, "content-type": "application/json", accept: "application/json" }
+                  : { authorization: `Bearer ${configuration.apiKey}`, "content-type": "application/json", accept: "application/json" },
               body: JSON.stringify(
                 requestBody(provider, configuration, request, messages),
               ),
@@ -1113,7 +1147,7 @@ function createProviderAdapter(
           providerResponded = true;
           const parsed = await parseBody(response, signal);
           if (parsed.ok) {
-            body = parsed.body;
+            body = response.ok ? normalizeProviderResponse(provider, parsed.body, configuration) : parsed.body;
           } else {
             envelopeError = parsed.code;
           }
@@ -1663,6 +1697,14 @@ export function createFeatherlessAdapter(
   runtime?: Partial<AdapterRuntime>,
 ): StructuredGenerationAdapter {
   return createProviderAdapter("featherless", configuration, runtime);
+}
+
+export function createModelAdapter(
+  provider: ProviderKind,
+  configuration: ProviderConfiguration,
+  runtime?: Partial<AdapterRuntime>,
+): StructuredGenerationAdapter {
+  return createProviderAdapter(provider, configuration, runtime);
 }
 
 export function createFixtureAdapter(

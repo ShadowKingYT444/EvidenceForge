@@ -9,13 +9,12 @@ import {
   type ResearchRun,
 } from "../../contracts";
 import {
-  createFeatherlessAdapter,
   createFixtureAdapter,
-  createGroqAdapter,
-  createNvidiaAdapter,
+  createModelAdapter,
   type StructuredGenerationAdapter,
 } from "../models";
 import { readRuntimeEnvironment } from "../environment";
+import type { ModelCredential, ResearchRuntimeConfig } from "../session/research-session";
 import { createPromptRunNodeRequestBuilder } from "../prompts/render";
 import {
   createRunToken,
@@ -53,14 +52,16 @@ type MutationResult<T> = {
   value: T;
 };
 
-export function configuredResearchAdapters(): {
+export type ConfiguredResearchAdapters = {
   primary: StructuredGenerationAdapter;
   reviewer: StructuredGenerationAdapter;
   fallback?: StructuredGenerationAdapter | null;
   evidenceMode: ResearchRun["evidenceMode"];
-} {
-  const environment = readRuntimeEnvironment();
-  if (environment.evidenceMode === "fixture") {
+};
+
+export function configuredResearchAdapters(runtimeConfig?: ResearchRuntimeConfig): ConfiguredResearchAdapters {
+  const environment = runtimeConfig ? null : readRuntimeEnvironment();
+  if (environment?.evidenceMode === "fixture") {
     const unavailable = createFixtureAdapter({
       modelId: "provider-not-configured",
       developerFamily: "fixture",
@@ -69,43 +70,24 @@ export function configuredResearchAdapters(): {
     });
     return { primary: unavailable, reviewer: unavailable, fallback: null, evidenceMode: "fixture" };
   }
-  const createAdapter = (provider: string, apiKey: string, modelId: string) => {
-    if (provider === "groq") {
-      return createGroqAdapter({
-        apiKey,
-        modelId,
-        developerFamily: "openai",
-        baseFamily: "gpt-oss",
-        evidenceMode: "live",
-      });
-    }
-    if (provider === "nvidia_nim") {
-      return createNvidiaAdapter({
-        apiKey,
-        modelId,
-        developerFamily: "meta",
-        baseFamily: "llama",
-        evidenceMode: "live",
-      });
-    }
-    return createFeatherlessAdapter({
-      apiKey,
-      modelId,
-      developerFamily: modelId.toLowerCase().includes("qwen") ? "qwen" : "mistral",
-      baseFamily: modelId.toLowerCase().includes("qwen") ? "qwen" : "mistral",
+  const createAdapter = (credential: ModelCredential) => {
+    const family = credential.model.split(/[/:]/u)[0]?.toLowerCase() || credential.provider;
+    return createModelAdapter(credential.provider, {
+      apiKey: credential.apiKey,
+      modelId: credential.model,
+      developerFamily: credential.provider === "nvidia_nim" ? "nvidia" : credential.provider,
+      baseFamily: family,
       evidenceMode: "live",
     });
   };
-  const primary = createAdapter(
-      environment.primary.provider,
-      environment.primary.apiKey,
-      environment.primary.model,
-    );
-  const reviewer = createAdapter(
-      environment.reviewer.provider,
-      environment.reviewer.apiKey,
-      environment.reviewer.model,
-    );
+  const config = runtimeConfig ?? {
+    primary: environment!.primary,
+    reviewer: environment!.reviewer,
+    openAlexApiKey: process.env.OPENALEX_API_KEY?.trim() ?? "",
+    firecrawlApiKey: process.env.FIRECRAWL_API_KEY?.trim() ?? "",
+  };
+  const primary = createAdapter(config.primary);
+  const reviewer = createAdapter(config.reviewer);
   return {
     primary,
     reviewer,
@@ -120,8 +102,7 @@ function timestampAfter(run: ResearchRun): string {
   return new Date(Math.max(now, Number.isFinite(prior) ? prior + 1 : now)).toISOString();
 }
 
-function createEphemeralService(store: InMemoryWorkflowRunStore): RunService {
-  const adapters = configuredResearchAdapters();
+function createEphemeralService(store: InMemoryWorkflowRunStore, adapters: ConfiguredResearchAdapters): RunService {
   return new RunService({
     store,
     primaryAdapter: adapters.primary,
@@ -137,21 +118,35 @@ function digest(token: string): string {
 }
 
 export class DurableRunCoordinator {
+  private readonly runtimeByRun = new Map<string, ResearchRuntimeConfig>();
+
   constructor(
     readonly store: WorkflowRunStore,
     private readonly researchAdapterFactory: typeof configuredResearchAdapters = configuredResearchAdapters,
   ) {}
 
-  async create(intakeInput: unknown) {
+  adaptersForRun(runId: string): ConfiguredResearchAdapters {
+    const runtime = this.runtimeByRun.get(runId);
+    return runtime ? configuredResearchAdapters(runtime) : this.researchAdapterFactory();
+  }
+
+  runtimeForRun(runId: string): ResearchRuntimeConfig | null {
+    const runtime = this.runtimeByRun.get(runId);
+    return runtime ? structuredClone(runtime) : null;
+  }
+
+  async create(intakeInput: unknown, runtimeConfig?: ResearchRuntimeConfig) {
     const accessToken = createRunToken();
     const memory = new InMemoryWorkflowRunStore();
-    const service = createEphemeralService(memory);
+    const adapters = runtimeConfig ? configuredResearchAdapters(runtimeConfig) : this.researchAdapterFactory();
+    const service = createEphemeralService(memory, adapters);
     const created = service.create({
       intake: ResearchIntakeSchema.parse(intakeInput),
     });
     const snapshot = await this.store.create(created.run, {
       accessTokenDigest: digest(accessToken),
     });
+    if (runtimeConfig) this.runtimeByRun.set(snapshot.run.id, structuredClone(runtimeConfig));
     return { snapshot, accessToken };
   }
 
@@ -188,7 +183,7 @@ export class DurableRunCoordinator {
     const snapshot = await this.authorize(runId, accessToken);
     const memory = new InMemoryWorkflowRunStore();
     memory.hydrate(snapshot);
-    return createEphemeralService(memory).progress(runId);
+    return createEphemeralService(memory, this.adaptersForRun(runId)).progress(runId);
   }
 
   async continue(runId: string, expectedRevision: string, accessToken: string) {
@@ -274,7 +269,7 @@ export class DurableRunCoordinator {
   }
 
   private async continueParallelExtraction(prior: WorkflowRunSnapshot): Promise<MutationResult<{ advanced: boolean; failure: null | { code: string; details: string } }>> {
-    const adapters = this.researchAdapterFactory();
+    const adapters = this.adaptersForRun(prior.run.id);
     if (adapters.evidenceMode !== "live") throw new Error("Parallel extraction requires configured live providers.");
     const pooled = await extractEvidenceSourcesInParallel({
       run: prior.run,
@@ -452,13 +447,14 @@ export class DurableRunCoordinator {
     const snapshot = await this.authorize(runId, accessToken);
     const memory = new InMemoryWorkflowRunStore();
     memory.hydrate(snapshot);
-    return createEphemeralService(memory).export(runId);
+    return createEphemeralService(memory, this.adaptersForRun(runId)).export(runId);
   }
 
   async delete(runId: string, expectedRevision: string, accessToken: string) {
     if (!this.store.delete) throw new RunNotFoundError(runId);
     await this.authorizedRevision(runId, expectedRevision, accessToken);
     await this.store.delete(runId, expectedRevision, digest(accessToken));
+    this.runtimeByRun.delete(runId);
   }
 
   async getPacketDraft(runId: string, accessToken: string) {
@@ -526,7 +522,7 @@ export class DurableRunCoordinator {
     const prior = await this.authorizedRevision(runId, expectedRevision, accessToken);
     const memory = new InMemoryWorkflowRunStore();
     memory.hydrate(prior);
-    const service = createEphemeralService(memory);
+    const service = createEphemeralService(memory, this.adaptersForRun(runId));
     const value = await operation(service, prior);
     const latest = memory.load(runId);
     if (!latest) throw new RunNotFoundError(runId);

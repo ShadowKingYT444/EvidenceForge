@@ -28,7 +28,12 @@ async function runAccess(request: Request, context: Context) {
   if (!token) throw new RunAccessDeniedError();
   const coordinator = getDurableRunCoordinator();
   const snapshot = await coordinator.authorize(runId, token);
-  return { runId, sourceId, token, coordinator, snapshot };
+  const runtime = coordinator.runtimeForRun(runId);
+  return {
+    runId, sourceId, token, coordinator, snapshot, runtime,
+    openAlexApiKey: runtime?.openAlexApiKey ?? process.env.OPENALEX_API_KEY?.trim() ?? "",
+    firecrawlApiKey: runtime?.firecrawlApiKey ?? process.env.FIRECRAWL_API_KEY?.trim() ?? "",
+  };
 }
 
 async function json(request: Request) {
@@ -49,11 +54,11 @@ function safeRunId(runId: string): string {
 export async function searchRunSources(request: Request, context: Context): Promise<Response> {
   const startedAt = Date.now();
   try {
-    await runAccess(request, context);
+    const access = await runAccess(request, context);
     const query = new URL(request.url).searchParams.get("query") ?? "";
     const parsed = OpenAlexSearchRequestSchema.parse({ query, maxResults: 10 });
-    const apiKey = process.env.OPENALEX_API_KEY?.trim();
-    const firecrawlApiKey = process.env.FIRECRAWL_API_KEY?.trim();
+    const apiKey = access.openAlexApiKey;
+    const firecrawlApiKey = access.firecrawlApiKey;
     const [result, web] = await Promise.all([
       searchScholarlyWorks(parsed.query, { apiKey, limits: { maxResults: parsed.maxResults, pageSize: parsed.maxResults, maxPages: 2 } }),
       firecrawlApiKey ? searchFirecrawl(parsed.query, { apiKey: firecrawlApiKey, maxResults: parsed.maxResults, deadlineMs: 20_000, signal: request.signal }) : Promise.resolve(null),
@@ -84,8 +89,8 @@ export async function autoCollectRunSources(request: Request, context: Context):
   try {
     const access = await runAccess(request, context);
     const body = AutomaticCollectionRequestSchema.parse(await json(request));
-    const apiKey = process.env.OPENALEX_API_KEY?.trim();
-    const firecrawlApiKey = process.env.FIRECRAWL_API_KEY?.trim();
+    const apiKey = access.openAlexApiKey;
+    const firecrawlApiKey = access.firecrawlApiKey;
     if (access.snapshot.run.status !== "collecting_sources") {
       throw new WorkflowStateConflictError("Automatic collection requires approved scope and the collecting_sources phase.");
     }
@@ -96,6 +101,7 @@ export async function autoCollectRunSources(request: Request, context: Context):
       config: body.config,
       openAlexApiKey: apiKey ?? "",
       firecrawlApiKey,
+      adapters: access.coordinator.adaptersForRun(access.runId),
       signal: request.signal,
     });
     const saved = await access.coordinator.savePacketDraft(
@@ -167,7 +173,7 @@ export async function importRunOpenAlexSource(request: Request, context: Context
   try {
     const access = await runAccess(request, context);
     const body = importBodySchema.parse(await json(request));
-    const apiKey = process.env.OPENALEX_API_KEY?.trim();
+    const apiKey = access.openAlexApiKey;
     if (access.snapshot.run.status !== "collecting_sources") {
       throw new WorkflowStateConflictError("Sources can only be changed during packet collection.");
     }

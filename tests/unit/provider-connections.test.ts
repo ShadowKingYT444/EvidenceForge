@@ -14,9 +14,11 @@ const key = "sk-test-only-not-a-real-key";
 const models: Record<ProviderId, string> = {
   openai: "gpt-4.1-mini",
   anthropic: "claude-3-5-haiku-latest",
+  gemini: "gemini-2.5-flash",
+  groq: "openai/gpt-oss-20b",
   grok: "grok-3-mini",
   deepseek: "deepseek-chat",
-  nim: "meta/llama-3.1-8b-instruct",
+  nvidia_nim: "meta/llama-3.1-8b-instruct",
   featherless: "mistralai/Mistral-Large-Instruct-2411",
 };
 
@@ -26,7 +28,7 @@ afterEach(() => {
 });
 
 describe("provider connection contract", () => {
-  it("keeps the client catalog and server allowlist complete for the same six providers", () => {
+  it("keeps the client catalog and server allowlist complete for the same eight providers", () => {
     expect([...clientProviderIds]).toEqual([...Object.keys(PROVIDER_CONFIG)]);
   });
 
@@ -53,19 +55,26 @@ describe("provider connection contract", () => {
     async (provider) => {
       const transport = vi.fn(async (url: string, init: RequestInit) => {
         const body = JSON.parse(String(init.body));
-        expect(url).toBe(PROVIDER_CONFIG[provider].endpoint);
+        expect(url).toBe(provider === "gemini" ? `${PROVIDER_CONFIG[provider].endpoint}/${encodeURIComponent(models[provider])}:generateContent` : PROVIDER_CONFIG[provider].endpoint);
         const headers = new Headers(init.headers);
         if (provider === "anthropic") expect(headers.get("x-api-key")).toBe(key);
+        else if (provider === "gemini") expect(headers.get("x-goog-api-key")).toBe(key);
         else expect(headers.get("authorization")).toBe(`Bearer ${key}`);
-      expect(body.model).toBe(models[provider]);
-      expect(body.max_tokens ?? body.max_output_tokens).toBe(8);
-        expect(body.stream).toBe(false);
+        if (provider === "gemini") {
+          expect(body.generationConfig.maxOutputTokens).toBe(8);
+        } else {
+          expect(body.model).toBe(models[provider]);
+          expect(body.max_tokens ?? body.max_output_tokens).toBe(8);
+          expect(body.stream).toBe(false);
+        }
         expect(JSON.stringify(body)).not.toContain(key);
         const response = provider === "openai"
           ? { output: [{ type: "message", content: [{ type: "output_text", text: "ok" }] }] }
           : provider === "anthropic"
             ? { id: "msg", content: [{ type: "text", text: "ok" }] }
-            : { id: "ok", choices: [{ message: { content: "ok" } }] };
+            : provider === "gemini"
+              ? { candidates: [{ content: { parts: [{ text: "ok" }] } }] }
+              : { id: "ok", choices: [{ message: { content: "ok" } }] };
         return new Response(JSON.stringify(response), {
           status: 200,
           headers: { "content-type": "application/json" },

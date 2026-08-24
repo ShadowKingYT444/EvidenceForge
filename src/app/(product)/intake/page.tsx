@@ -2,11 +2,15 @@ import { LiveIntake } from "@/features/research/live-intake";
 import { IntakeScope } from "@/features/intake/intake-scope";
 import type { IntakeDraft } from "@/features/intake/intake-state";
 import { goldenRunV01 } from "@/fixtures/golden-run-v0.1";
+import { isOwnerCookieValue, researchSessionCookies } from "@/server/session/research-session";
+import { cookies } from "next/headers";
+import { notFound } from "next/navigation";
 
 type IntakePageProps = { searchParams: Promise<{ example?: string | string[]; demo?: string | string[] }> };
 
 export default async function IntakePage({ searchParams }: IntakePageProps) {
   const { example, demo } = await searchParams;
+  if (demo === "golden" && !isOwnerCookieValue((await cookies()).get(researchSessionCookies.owner)?.value)) notFound();
   if (example === "ai-reliability") return <LiveIntake example />;
   const goldenDraft: IntakeDraft = {
     originalQuestion: goldenRunV01.intake.originalQuestion,

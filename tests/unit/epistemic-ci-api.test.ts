@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { GET as getDemo } from "../../src/app/api/epistemic-ci/demo/route";
 import { POST as compile } from "../../src/app/api/epistemic-ci/compile/route";
 import { POST as review } from "../../src/app/api/epistemic-ci/review/route";
+import { createOwnerCookie } from "../../src/server/session/research-session";
 
 function request(path: string, body: unknown, contentType = "application/json"): Request {
   return new Request(`http://localhost/api/epistemic-ci/${path}`, {
@@ -13,7 +14,11 @@ function request(path: string, body: unknown, contentType = "application/json"):
 
 describe("Epistemic CI API", () => {
   it("serves the deterministic demo fixture with no-store caching", async () => {
-    const response = await getDemo();
+    const priorRunSecret = process.env.RUN_TOKEN_SECRET;
+    const priorOwnerSecret = process.env.OWNER_DEMO_SECRET;
+    process.env.RUN_TOKEN_SECRET = "unit-test-run-secret";
+    process.env.OWNER_DEMO_SECRET = "unit-test-owner-secret";
+    const response = await getDemo(new Request("http://localhost/api/epistemic-ci/demo", { headers: { cookie: createOwnerCookie().split(";", 1)[0] } }));
     const body = (await response.json()) as {
       mode: string;
       baseBuild: { graph: { graphHash: string } };
@@ -25,6 +30,10 @@ describe("Epistemic CI API", () => {
     expect(body.mode).toBe("fixture");
     expect(body.changes).toHaveLength(2);
     expect(body.baseBuild.graph.graphHash).toMatch(/^[a-f0-9]{64}$/u);
+    const hidden = await getDemo(new Request("http://localhost/api/epistemic-ci/demo"));
+    expect(hidden.status).toBe(404);
+    if (priorRunSecret === undefined) delete process.env.RUN_TOKEN_SECRET; else process.env.RUN_TOKEN_SECRET = priorRunSecret;
+    if (priorOwnerSecret === undefined) delete process.env.OWNER_DEMO_SECRET; else process.env.OWNER_DEMO_SECRET = priorOwnerSecret;
   });
 
   it("compiles a change sequence and rejects malformed bodies", async () => {

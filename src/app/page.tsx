@@ -1,5 +1,9 @@
-import { EpistemicCiWorkspace } from "@/features/epistemic-ci/workspace";
+import { ResearchGate } from "@/features/providers/research-gate";
+import { isOwnerCookieValue, readResearchSessionCookieValue, researchSessionCookies } from "@/server/session/research-session";
+import { cookies } from "next/headers";
 
-export default function Home() {
-  return <EpistemicCiWorkspace />;
+export default async function Home() {
+  const store = await cookies();
+  const session = readResearchSessionCookieValue(store.get(researchSessionCookies.research)?.value);
+  return <ResearchGate initialState={{ configured: Boolean(session), ownerDemo: isOwnerCookieValue(store.get(researchSessionCookies.owner)?.value), session: session?.safe ?? null }} />;
 }

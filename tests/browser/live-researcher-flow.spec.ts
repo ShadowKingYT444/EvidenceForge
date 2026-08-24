@@ -6,19 +6,21 @@ test("opens a focused research composer without marketing clutter", async ({ pag
     if (message.type() === "error") errors.push(message.text());
   });
 
+  await page.route("**/api/session/research", (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ configured: true, ownerDemo: false, session: { primary: { provider: "openai", model: "gpt-4.1-mini" }, reviewer: { provider: "openai", model: "gpt-4.1-mini" }, expiresAt: new Date(Date.now() + 60_000).toISOString() } }) }));
   await page.goto("/");
   await expect(page.getByRole("heading", { name: /Test a claim against the evidence/i })).toBeVisible();
   await expect(page.getByLabel("Research question")).toBeVisible();
   await expect(page.getByLabel("Decision this will inform")).toBeVisible();
   await expect(page.getByText("Add boundaries")).toBeVisible();
-  await expect(page.getByRole("button", { name: /Try the demo/i })).toBeVisible();
-  await expect(page.getByLabel("Prompt examples").getByRole("button")).toHaveCount(3);
+  await expect(page.getByRole("button", { name: /demo/i })).toHaveCount(0);
+  await expect(page.getByLabel("Prompt examples").getByRole("button")).toHaveCount(2);
   expect(errors).toEqual([]);
 });
 
 test("creates a private investigation instead of opening the battery fixture", async ({ page }) => {
   const runId = "ai-reliability-run";
   const question = "Does retrieval-augmented generation reduce factual hallucination in knowledge-grounded language generation compared with the same model without retrieval?";
+  await page.context().addCookies([{ name: "evidenceforge_research_session", value: "browser-session", url: `http://127.0.0.1:${process.env.PLAYWRIGHT_PORT ?? 3100}` }]);
   await page.route("**/api/health", (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ status: "ok", evidenceMode: "live", liveInvestigationsReady: true, reasonCodes: [] }) }));
   await page.route("**/api/runs", async (route) => {
     if (route.request().method() !== "POST") return route.fallback();
@@ -42,15 +44,8 @@ test("creates a private investigation instead of opening the battery fixture", a
   await expect(page.getByText(/golden fixture|72-hour environmental sensor/iu)).toHaveCount(0);
 });
 
-test("blocks run creation when live scholarly search is not configured", async ({ page }) => {
-  let createRequests = 0;
-  await page.route("**/api/health", (route) => route.fulfill({ status: 503, contentType: "application/json", body: JSON.stringify({ status: "degraded", evidenceMode: "live", liveInvestigationsReady: false, reasonCodes: ["openalex_key_missing"] }) }));
-  await page.route("**/api/runs", async (route) => { createRequests += 1; await route.fulfill({ status: 500 }); });
-  await page.goto("/");
-  await page.getByLabel("Research question").fill("Does bounded retrieval improve factual reliability in technical assistants?");
-  await page.getByLabel("Decision this will inform").fill("Choose a retrieval architecture.");
-  await page.getByRole("button", { name: /Start investigation/i }).click();
-  await expect(page.getByText("Live scholarly search is not configured.", { exact: true })).toBeVisible();
-  expect(createRequests).toBe(0);
-  await expect(page.getByRole("button", { name: /Try the demo/i })).toBeVisible();
+test("rejects run creation without a credential session", async ({ request }) => {
+  const response = await request.post("/api/runs", { data: { expectedRevision: null, intake: { originalQuestion: "Does retrieval improve factual reliability?", intendedApplication: "Choose an architecture.", populationOrGeography: "Technical systems", timeHorizon: "Current evidence", availableMaterialsOrBudget: "Bounded search", desiredDepth: "Evidence packet", constraints: [], unansweredClarifications: [] } } });
+  expect(response.status()).toBe(401);
+  expect(await response.json()).toMatchObject({ error: { code: "research_session_required" } });
 });

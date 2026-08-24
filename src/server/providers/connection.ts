@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-export const providerIds = ["openai", "anthropic", "grok", "deepseek", "nim", "featherless"] as const;
+export const providerIds = ["openai", "anthropic", "gemini", "groq", "grok", "deepseek", "nvidia_nim", "featherless"] as const;
 export type ProviderId = (typeof providerIds)[number];
 
 type ProviderConfig = {
@@ -12,9 +12,11 @@ type ProviderConfig = {
 export const PROVIDER_CONFIG: Readonly<Record<ProviderId, ProviderConfig>> = {
   openai: { label: "OpenAI / Codex", endpoint: "https://api.openai.com/v1/responses", protocol: "responses" },
   anthropic: { label: "Anthropic Claude", endpoint: "https://api.anthropic.com/v1/messages", protocol: "anthropic" },
+  gemini: { label: "Google Gemini", endpoint: "https://generativelanguage.googleapis.com/v1beta/models", protocol: "chat" },
+  groq: { label: "Groq", endpoint: "https://api.groq.com/openai/v1/chat/completions", protocol: "chat" },
   grok: { label: "xAI Grok", endpoint: "https://api.x.ai/v1/chat/completions", protocol: "chat" },
   deepseek: { label: "DeepSeek", endpoint: "https://api.deepseek.com/chat/completions", protocol: "chat" },
-  nim: { label: "NVIDIA NIM", endpoint: "https://integrate.api.nvidia.com/v1/chat/completions", protocol: "chat" },
+  nvidia_nim: { label: "NVIDIA NIM", endpoint: "https://integrate.api.nvidia.com/v1/chat/completions", protocol: "chat" },
   featherless: { label: "Featherless", endpoint: "https://api.featherless.ai/v1/chat/completions", protocol: "chat" },
 };
 
@@ -63,6 +65,7 @@ function sanitized(code: ConnectionErrorCode, message: string, category: Connect
 function bodyFor(provider: ProviderId, model: string): Record<string, unknown> {
   if (provider === "openai") return { model, input: "Reply with one word: ok", max_output_tokens: 8, stream: false };
   if (provider === "anthropic") return { model, max_tokens: 8, messages: [{ role: "user", content: "Reply with one word: ok" }], stream: false };
+  if (provider === "gemini") return { contents: [{ role: "user", parts: [{ text: "Reply with one word: ok" }] }], generationConfig: { maxOutputTokens: 8 } };
   return { model, max_tokens: 8, messages: [{ role: "user", content: "Reply with one word: ok" }], stream: false };
 }
 
@@ -70,6 +73,7 @@ function headersFor(provider: ProviderId, apiKey: string): Record<string, string
   if (provider === "anthropic") {
     return { "content-type": "application/json", "x-api-key": apiKey, "anthropic-version": "2023-06-01" };
   }
+  if (provider === "gemini") return { "content-type": "application/json", "x-goog-api-key": apiKey };
   return { "content-type": "application/json", authorization: `Bearer ${apiKey}` };
 }
 
@@ -82,6 +86,7 @@ function hasExpectedShape(provider: ProviderId, value: unknown): boolean {
   const candidate = value as Record<string, unknown>;
   if (provider === "openai") return Array.isArray(candidate.output) && candidate.output.length > 0;
   if (provider === "anthropic") return Array.isArray(candidate.content) && candidate.content.length > 0;
+  if (provider === "gemini") return Array.isArray(candidate.candidates) && candidate.candidates.length > 0;
   return Array.isArray(candidate.choices) && candidate.choices.length > 0;
 }
 
@@ -134,12 +139,15 @@ export async function verifyProviderConnection(
   else bucket.count += 1;
 
   const config = PROVIDER_CONFIG[request.provider];
+  const endpoint = request.provider === "gemini"
+    ? `${config.endpoint}/${encodeURIComponent(request.model)}:generateContent`
+    : config.endpoint;
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), deps.timeoutMs ?? 12_000);
   const started = now();
   try {
     const transport = deps.transport ?? fetch;
-    const response = await transport(config.endpoint, {
+    const response = await transport(endpoint, {
       method: "POST",
       headers: headersFor(request.provider, request.apiKey),
       body: JSON.stringify(bodyFor(request.provider, request.model)),

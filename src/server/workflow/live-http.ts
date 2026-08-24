@@ -2,7 +2,8 @@ import { createHash, randomUUID } from "node:crypto";
 import { z } from "zod";
 
 import { extractRunToken, runTokenCookie } from "../auth/run-token";
-import { assertLiveWorkflowReady, EnvironmentValidationError } from "../environment";
+import { EnvironmentValidationError } from "../environment";
+import { requireResearchSession, ResearchSessionRequiredError } from "../session/research-session";
 import {
   CreateRunRequestSchema,
   ContinueRunRequestSchema,
@@ -115,20 +116,23 @@ export function liveRouteError(error: unknown, context: ErrorContext = {}): Resp
           error instanceof RevisionConflictError ? 409 :
           error instanceof WorkflowStateConflictError ? 409 :
           error instanceof z.ZodError || error instanceof InvalidRequestError ? 400 :
-            error instanceof EnvironmentValidationError ? 503 :
+            error instanceof ResearchSessionRequiredError ? 401 :
+              error instanceof EnvironmentValidationError ? 503 :
               error instanceof ProviderRateLimitError ? 429 :
                 error instanceof UpstreamProviderError ? 502 : 500;
   const code =
     status === 404 ? "run_not_found" :
       status === 409 ? error instanceof WorkflowStateConflictError ? "workflow_state_conflict" : "revision_conflict" :
         status === 400 ? "invalid_request" :
-          status === 503 ? "runtime_configuration_invalid" :
+          status === 401 ? "research_session_required" :
+            status === 503 ? "runtime_configuration_invalid" :
             status === 429 ? "provider_rate_limited" :
               status === 502 ? "upstream_provider_failure" : "internal_error";
   const message =
     status === 404 ? "This investigation is unavailable. It may have expired or the server may have restarted; use a recovery link or start again." :
       status === 500 ? "The investigation request could not be completed." :
-        status === 503 ? "Live investigations are not configured on this server." :
+        status === 401 ? "Connect model and retrieval credentials before starting an investigation." :
+          status === 503 ? "Live investigations are not configured on this server." :
           error instanceof Error ? error.message : "Invalid request";
   const requestId = correlationId(context.request);
   const retryable = status === 409 || status === 429 || status >= 500;
@@ -139,7 +143,8 @@ export function liveRouteError(error: unknown, context: ErrorContext = {}): Resp
           error instanceof WorkflowStateConflictError ? "WorkflowStateConflictError" :
           error instanceof z.ZodError ? "ZodError" :
             error instanceof InvalidRequestError ? "InvalidRequestError" :
-            error instanceof EnvironmentValidationError ? "EnvironmentValidationError" :
+            error instanceof ResearchSessionRequiredError ? "ResearchSessionRequiredError" :
+              error instanceof EnvironmentValidationError ? "EnvironmentValidationError" :
               error instanceof ProviderRateLimitError ? "ProviderRateLimitError" :
                 error instanceof UpstreamProviderError ? "UpstreamProviderError" : "InternalError";
   console.error(JSON.stringify({
@@ -162,8 +167,8 @@ export async function createLiveRun(request: Request): Promise<Response> {
   const startedAt = Date.now();
   try {
     const body = CreateRunRequestSchema.parse(await json(request));
-    assertLiveWorkflowReady();
-    const created = await getDurableRunCoordinator().create(body.intake);
+    const session = requireResearchSession(request);
+    const created = await getDurableRunCoordinator().create(body.intake, session.config);
     const runId = created.snapshot.run.id;
     const recoveryUrl = `/runs/${encodeURIComponent(runId)}/access?token=${encodeURIComponent(created.accessToken)}`;
     return Response.json(

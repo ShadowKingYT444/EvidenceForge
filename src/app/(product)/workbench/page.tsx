@@ -1,4 +1,5 @@
-import { headers } from "next/headers";
+import { cookies, headers } from "next/headers";
+import { notFound } from "next/navigation";
 
 import { goldenRunV01 } from "@/fixtures/golden-run-v0.1";
 import { buildConclusionsGapModel } from "@/features/workbench/conclusions-gap-state";
@@ -10,6 +11,7 @@ import { loadProcessLocalRunFromApi } from "@/features/workbench/process-local-r
 import { resolveWorkbenchProjectionQuery, SIMULATED_OBJECTION_RUN_ID } from "@/features/workbench/workbench-query-policy";
 import { WorkbenchShell, type WorkbenchStageId } from "@/features/workbench/workbench-shell";
 import { buildWorkbenchModel, buildWorkbenchScenarioModel, isWorkbenchScenario } from "@/features/workbench/workbench-state";
+import { isOwnerCookieValue, researchSessionCookies } from "@/server/session/research-session";
 
 type SearchValue = string | string[] | undefined;
 type WorkbenchPageProps = { searchParams: Promise<Record<string, SearchValue>> };
@@ -30,6 +32,7 @@ export default async function WorkbenchPage({ searchParams }: WorkbenchPageProps
     runId: first(raw.runId),
     expectedRevision: first(raw.expectedRevision),
   });
+  if (!query.runId && !isOwnerCookieValue((await cookies()).get(researchSessionCookies.owner)?.value)) notFound();
 
   let run = goldenRunV01;
   let revision: string | null = null;

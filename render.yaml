@@ -17,8 +17,12 @@ services:
         generateValue: true
       - key: RUN_CACHE_TTL_MINUTES
         value: 120
+      - key: RESEARCH_SESSION_TTL_MINUTES
+        value: 120
       - key: FINAL_RUN_RETENTION_MINUTES
         value: 15
+      - key: OWNER_DEMO_SECRET
+        sync: false
       - key: FEATHERLESS_API_KEY
         sync: false
       - key: GROQ_API_KEY
