@@ -38,7 +38,7 @@ test.describe("genuine live provider journey", () => {
     page.on("pageerror", (error) => browserErrors.push(error.name));
 
     await page.goto("/");
-    await expect(page.getByRole("heading", { level: 1, name: "What should we test?" })).toBeVisible();
+    await expect(page.getByRole("heading", { level: 1, name: "Test a claim against the evidence." })).toBeVisible();
 
     const api = context.request;
     const healthResponse = await api.get("/api/health");
@@ -61,7 +61,7 @@ test.describe("genuine live provider journey", () => {
       },
     });
     expect(createResponse.status()).toBe(201);
-    expect(createResponse.headers()["set-cookie"]).toMatch(/evidenceforge_run_token=.*HttpOnly.*SameSite=Lax/iu);
+    expect(createResponse.headers()["set-cookie"]).toMatch(/evidenceforge_run_token_[^=]+=.*HttpOnly.*SameSite=Lax.*Secure/iu);
     const created = await responseJson(createResponse, "create live investigation");
     let run = record(created.run, "created run");
     const runId = String(run.id);

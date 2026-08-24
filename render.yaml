@@ -28,7 +28,7 @@ services:
       - key: PRIMARY_PROVIDER
         value: groq
       - key: PRIMARY_MODEL
-        value: openai/gpt-oss-120b
+        value: openai/gpt-oss-20b
       - key: REVIEW_PROVIDER
         value: nvidia_nim
       - key: REVIEW_MODEL

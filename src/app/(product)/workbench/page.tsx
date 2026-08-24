@@ -47,7 +47,7 @@ export default async function WorkbenchPage({ searchParams }: WorkbenchPageProps
   const packetReview = packetScenario === "review"
     ? bindPacketReviewDecisionSession(packetReviewBase)
     : packetScenario === "stale-session"
-      ? bindPacketReviewDecisionSession(packetReviewBase, { now: Date.now() - 60_000, ttlMs: 1 })
+      ? bindPacketReviewDecisionSession(packetReviewBase, { now: 1, ttlMs: 1 })
       : packetReviewBase;
   const displayOverrides: MatrixDisplayOverrides = new Map(packetReview.sources.map((source) => [source.id, source.display.state === "available" ? { state: "available" as const } : { state: "hidden" as const, reasonCode: "packet_display_hidden" as const }]));
   const evidenceMatrix = !query.runId && isEvidenceMatrixScenario(query.matrix) ? buildEvidenceMatrixScenarioModel(run, query.matrix, displayOverrides) : buildEvidenceMatrixModel(run, displayOverrides);
